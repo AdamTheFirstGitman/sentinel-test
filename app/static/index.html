@@ -94,9 +94,11 @@
         <div id="class-legend" class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-400"></div>
       </div>
     </div>
-    <div class="panel p-3 text-xs text-slate-500" id="tools-panel">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Tools</h2>
-      coming in step 5
+    <div class="panel p-3" id="tools-panel">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Perturbations</h2>
+      <input id="perturb-text" placeholder="(empty = last message)" class="mb-2">
+      <button id="perturb-btn" class="btn-primary w-full">Replay with perturbations</button>
+      <div id="perturb-results" class="mt-2 flex flex-col gap-1 text-xs"></div>
     </div>
   </div>
 </div>
@@ -323,6 +325,49 @@ document.getElementById('ig-fetch').onclick = async () => {
   const out = await (await fetch('/instagram/fetch', {method:'POST',
     headers:{'Content-Type':'application/json'}, body: JSON.stringify({rate})})).json();
   igStatus(out.ok ? `replaying ${out.total} fetched comments at ${rate}/s` : `error: ${out.error}`);
+};
+
+// ---------- perturbation tool ----------
+document.getElementById('perturb-btn').onclick = async () => {
+  const box = document.getElementById('perturb-results');
+  box.innerHTML = '<span class="text-slate-500">classifying 4 variants…</span>';
+  const out = await (await fetch('/perturb', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text: document.getElementById('perturb-text').value})})).json();
+  if (!out.ok) { box.innerHTML = `<span class="text-red-400">${esc(out.error)}</span>`; return; }
+  box.innerHTML = `<div class="text-slate-500 break-words">original: ${esc(out.original)}</div>` +
+    out.results.map(r => `
+      <div class="border border-[#1f2a36] rounded p-1.5">
+        <div class="flex items-center gap-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                style="background:${classColor(r.verdict.klass)}">${esc(r.verdict.klass)}</span>
+          <span class="text-[10px] text-slate-400">conf ${r.verdict.confidence.toFixed(2)}</span>
+          <span class="text-[10px] text-slate-500 ml-auto">${esc(r.name)}</span>
+        </div>
+        <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(r.text)}</div>
+      </div>`).join('');
+};
+
+// ---------- row label control ----------
+window.decorateRow = el => {
+  const row = JSON.parse(el.dataset.row);
+  const classes = Object.keys(row.verdict.probabilities);
+  const slot = el.querySelector('.row-actions');
+  slot.innerHTML = `
+    <span class="text-[10px] text-slate-500">I'd have said:</span>
+    <select class="label-class w-auto text-[10px] py-0 px-1">
+      ${classes.map(c => `<option ${c===row.verdict.klass?'selected':''}>${esc(c)}</option>`).join('')}
+    </select>
+    <button class="label-send btn-ghost text-[10px] py-0 px-1.5">label</button>`;
+  slot.className = 'row-actions mt-1 flex items-center gap-1';
+  slot.querySelector('.label-send').onclick = async () => {
+    const my = slot.querySelector('.label-class').value;
+    await fetch('/label', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({source: row.source, text: row.text,
+        previous_messages: row.previous_messages, brief_version: row.verdict.brief_version,
+        jev_class: row.verdict.klass, my_class: my})});
+    slot.innerHTML = `<span class="text-[10px] text-emerald-400">labelled: ${esc(my)}</span>`;
+  };
 };
 
 // ---------- SSE ----------

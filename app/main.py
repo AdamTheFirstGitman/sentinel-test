@@ -12,6 +12,8 @@ from pydantic import BaseModel
 from app import config
 from app.brief import PRESETS, Brief, Topic
 from app.instagram import InstagramReplayer, fetch_graph_comments, parse_paste, parse_upload
+from app.labels import append_label
+from app.perturb import PERTURBATIONS
 from app.pipeline import Pipeline
 from app.twitch import TwitchSource
 
@@ -149,4 +151,39 @@ async def instagram_fetch(req: FetchRequest) -> dict:
 @app.post("/instagram/stop")
 async def instagram_stop() -> dict:
     instagram.stop()
+    return {"ok": True}
+
+
+class PerturbRequest(BaseModel):
+    text: str = ""  # empty = last message seen by the pipeline
+
+
+@app.post("/perturb")
+async def perturb(req: PerturbRequest) -> dict:
+    text = req.text.strip() or (pipeline.last_message.text if pipeline.last_message else "")
+    if not text:
+        return {"ok": False, "error": "no message to perturb yet"}
+    results = []
+    try:
+        for name, fn in PERTURBATIONS.items():
+            variant = fn(text)
+            verdict = await pipeline.classify_adhoc(variant)
+            results.append({"name": name, "text": variant, "verdict": verdict})
+    except RuntimeError as exc:  # budget pause
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "original": text, "results": results}
+
+
+class LabelRequest(BaseModel):
+    source: str
+    text: str
+    previous_messages: list[str]
+    brief_version: int
+    jev_class: str
+    my_class: str
+
+
+@app.post("/label")
+async def label(req: LabelRequest) -> dict:
+    append_label(req.model_dump())
     return {"ok": True}
