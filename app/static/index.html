@@ -35,9 +35,21 @@
       <div id="twitch-status" class="text-xs text-slate-500 mt-2">disconnected</div>
     </div>
 
-    <div class="panel p-3 text-xs text-slate-500" id="instagram-panel">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Instagram</h2>
-      coming in step 4
+    <div class="panel p-3" id="instagram-panel">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Instagram (replay, read-only)</h2>
+      <textarea id="ig-paste" rows="4" class="mb-2"
+        placeholder="one comment per line&#10;author: text  (or just text)"></textarea>
+      <div class="flex gap-2 items-center mb-2">
+        <input type="file" id="ig-file" accept=".json,.csv,.txt" class="text-[10px] p-0 border-0">
+      </div>
+      <div class="flex gap-2 items-center">
+        <label class="text-[10px] text-slate-500 shrink-0">rate/s</label>
+        <input type="number" id="ig-rate" value="2" min="0.1" max="20" step="0.5" style="width:4rem">
+        <button id="ig-replay" class="btn-primary flex-1">Replay</button>
+        <button id="ig-stop" class="btn-ghost">Stop</button>
+      </div>
+      <button id="ig-fetch" class="btn-ghost w-full mt-2 hidden">Fetch via Graph API</button>
+      <div id="ig-status" class="text-[10px] text-slate-500 mt-2"></div>
     </div>
 
     <div class="panel p-3" id="brief-panel">
@@ -286,6 +298,33 @@ document.getElementById('split-preset').onchange = () => {
   if (document.getElementById('split-toggle').checked) pushSplit();
 };
 
+// ---------- instagram ----------
+const igStatus = text => document.getElementById('ig-status').textContent = text;
+
+document.getElementById('ig-replay').onclick = async () => {
+  const rate = parseFloat(document.getElementById('ig-rate').value) || 2;
+  const file = document.getElementById('ig-file').files[0];
+  let body;
+  if (file) body = {filename: file.name, content: await file.text(), rate};
+  else body = {text: document.getElementById('ig-paste').value, rate};
+  const out = await (await fetch('/instagram/replay', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
+  igStatus(out.ok ? `replaying ${out.total} comments at ${rate}/s` : `error: ${out.error}`);
+};
+
+document.getElementById('ig-stop').onclick = async () => {
+  await fetch('/instagram/stop', {method:'POST'});
+  igStatus('stopped');
+};
+
+document.getElementById('ig-fetch').onclick = async () => {
+  igStatus('fetching…');
+  const rate = parseFloat(document.getElementById('ig-rate').value) || 2;
+  const out = await (await fetch('/instagram/fetch', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({rate})})).json();
+  igStatus(out.ok ? `replaying ${out.total} fetched comments at ${rate}/s` : `error: ${out.error}`);
+};
+
 // ---------- SSE ----------
 const events = new EventSource('/events');
 events.onmessage = e => {
@@ -294,6 +333,7 @@ events.onmessage = e => {
   else if (msg.type === 'stats') renderStats(msg.stats);
   else if (msg.type === 'twitch') renderTwitch(msg.status, msg.channel);
   else if (msg.type === 'banner') showBanner(msg.text);
+  else if (msg.type === 'instagram') igStatus(`${msg.status} (${msg.sent}/${msg.total})`);
   else if (msg.type === 'error') console.warn('classify error:', msg.detail);
   else if (msg.type === 'brief') window.onBriefEvent && window.onBriefEvent(msg);
 };
@@ -314,6 +354,7 @@ fetch('/snapshot').then(r => r.json()).then(snap => {
     document.getElementById('split-toggle').checked = true;
     splitSel.value = snap.split_key;
   }
+  if (snap.ig_graph_enabled) document.getElementById('ig-fetch').classList.remove('hidden');
   window.onSnapshot && window.onSnapshot(snap);   // brief editor hook (step 3)
 });
 </script>

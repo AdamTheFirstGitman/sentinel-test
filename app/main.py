@@ -11,11 +11,13 @@ from pydantic import BaseModel
 
 from app import config
 from app.brief import PRESETS, Brief, Topic
+from app.instagram import InstagramReplayer, fetch_graph_comments, parse_paste, parse_upload
 from app.pipeline import Pipeline
 from app.twitch import TwitchSource
 
 pipeline = Pipeline()
 twitch = TwitchSource(pipeline)
+instagram = InstagramReplayer(pipeline)
 
 STATIC = Path(__file__).parent / "static"
 
@@ -108,3 +110,43 @@ async def split(req: SplitRequest) -> dict:
         return {"ok": False, "error": "unknown preset"}
     pipeline.set_split(req.preset_key)
     return {"ok": True, "split_key": pipeline.split_key}
+
+
+class ReplayRequest(BaseModel):
+    text: str = ""           # paste mode: one comment per line
+    filename: str = ""       # upload mode: file read client-side
+    content: str = ""
+    rate: float = 2.0
+
+
+@app.post("/instagram/replay")
+async def instagram_replay(req: ReplayRequest) -> dict:
+    if req.filename:
+        comments = parse_upload(req.filename, req.content.encode())
+    else:
+        comments = parse_paste(req.text)
+    if not comments:
+        return {"ok": False, "error": "no comments parsed"}
+    instagram.start(comments, req.rate)
+    return {"ok": True, "total": len(comments)}
+
+
+class FetchRequest(BaseModel):
+    rate: float = 2.0
+
+
+@app.post("/instagram/fetch")
+async def instagram_fetch(req: FetchRequest) -> dict:
+    if not config.IG_GRAPH_ENABLED:
+        return {"ok": False, "error": "IG_ACCESS_TOKEN / IG_MEDIA_ID not set in .env"}
+    comments = await fetch_graph_comments()
+    if not comments:
+        return {"ok": False, "error": "no comments returned"}
+    instagram.start(comments, req.rate)
+    return {"ok": True, "total": len(comments)}
+
+
+@app.post("/instagram/stop")
+async def instagram_stop() -> dict:
+    instagram.stop()
+    return {"ok": True}
