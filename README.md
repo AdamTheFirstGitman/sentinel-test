@@ -53,12 +53,56 @@ Total: 4365 input tokens, $0.000183
 
 ## Panels
 
-_(filled in as the bench is built)_
+**Left — sources & brief.**
+- *Twitch*: type a channel name, Join/Leave. Connects anonymously (`justinfan…`) over
+  IRC WebSocket, read-only, no key. Every chat message goes through the classifier.
+- *Instagram*: paste comments one per line (`author: text`, or bare text), or pick a
+  JSON/CSV export (`author,text`), set a rate (msgs/s) and Replay. If `IG_ACCESS_TOKEN`
+  and `IG_MEDIA_ID` are set in `.env`, a "Fetch via Graph API" button appears and
+  replays the post's real comments (paginated GET, never writes).
+- *Brief*: preset dropdown (FR streamer / EN gaming streamer / IG fitness creator),
+  editable creator context and topics (key / label / description / policy). **Apply
+  brief** bumps `brief_version` and rebuilds the Jev question: one `choice` question
+  with fixed classes `ok`, `noise`, `critique`, `hostile_other` plus one
+  `hostile_<key>` per topic whose policy isn't `tolerate`.
+
+**Centre — live feed.** Newest on top: time, author (+badges, "new" for first-msg),
+text, class pill, stacked probability bar, confidence / latency / cost / brief
+version. Filter chips: all, hostile only, grey zone (confidence < 0.6). The *split*
+toggle classifies every message under a second preset brief too and shows both
+verdicts. Each row has an "I'd have said" control that appends your disagreement to
+`data/labels.jsonl`.
+
+**Right — stats & tools.** Live msgs/min, classified/dropped counts, queue depth,
+class distribution, latency p50/p95, cumulative cost vs `MAX_COST_USD`, brief
+version. The perturbation tool re-classifies the last (or a typed) message under
+leetspeak, homoglyphs, spaced letters and trailing emojis.
+
+## Budget & safety
+
+- Hard stop: when cumulative cost exceeds `MAX_COST_USD` (default $2.00),
+  classification pauses and a banner shows. Restart the server to reset.
+- Rate cap: max 20 msg/s sent to Jev; anything above is dropped and counted.
+- Read-only by construction: the only things ever sent to Twitch are the IRC
+  handshake and PONGs; the only Instagram call is a paginated GET.
+- `.env` is gitignored; keys never appear in logs or in the UI.
 
 ## Known limits
 
-_(filled in at the end)_
+- Everything is in memory: restart loses stats, feed, brief edits and budget state.
+- `.env` is read at startup only — adding the key or changing `MAX_COST_USD` needs a
+  restart (uvicorn `--reload` does not watch `.env`).
+- One Twitch channel at a time; joining another leaves the first.
+- Split mode doubles cost per message (two full API calls, both metered).
+- The feed keeps the last 200 rows; the latency percentiles use the last 500 calls.
+- Plain JS + SSE instead of HTMX: fewer moving parts for JSON-driven rows.
+- The brief editor trusts you: empty keys/descriptions are silently dropped, no
+  validation beyond that.
 
 ## Findings
 
 _(to be filled in by hand while using the bench)_
+
+- Early observation from the perturbation tool: heavy leetspeak/homoglyphs keep the
+  right class but drop confidence into the grey zone (~0.6), and spacing letters out
+  can flip between two applicable hostile topics.
