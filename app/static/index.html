@@ -40,9 +40,18 @@
       coming in step 4
     </div>
 
-    <div class="panel p-3 text-xs text-slate-500" id="brief-panel">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Brief</h2>
-      coming in step 3
+    <div class="panel p-3" id="brief-panel">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400">Brief</h2>
+        <span id="brief-version" class="text-[10px] text-slate-500 font-mono">v1</span>
+      </div>
+      <select id="brief-preset" class="mb-2"></select>
+      <textarea id="brief-context" rows="4" class="mb-2" placeholder="creator context"></textarea>
+      <div id="topics" class="flex flex-col gap-2 mb-2"></div>
+      <div class="flex gap-2">
+        <button id="add-topic" class="btn-ghost flex-1">+ topic</button>
+        <button id="apply-brief" class="btn-primary flex-1">Apply brief</button>
+      </div>
     </div>
   </div>
 
@@ -54,7 +63,10 @@
       <span class="chip" data-filter="hostile">hostile only</span>
       <span class="chip" data-filter="grey">grey zone &lt;0.6</span>
       <span class="flex-1"></span>
-      <span id="split-slot" class="text-xs text-slate-500"></span>
+      <label class="flex items-center gap-1 text-xs text-slate-400">
+        <input type="checkbox" id="split-toggle" class="w-auto">split vs
+        <select id="split-preset" class="w-auto text-xs py-0.5"></select>
+      </label>
     </div>
     <div id="feed" class="flex-1 overflow-y-auto divide-y divide-[#17202b]"></div>
   </div>
@@ -205,6 +217,75 @@ function renderTwitch(status, channel) {
     channel ? `${status} — #${channel}` : status;
 }
 
+// ---------- brief editor ----------
+let presets = {};
+
+function topicRow(t = {key:'', label:'', description:'', policy:'remove'}) {
+  const row = document.createElement('div');
+  row.className = 'topic-row border border-[#1f2a36] rounded p-2 flex flex-col gap-1';
+  row.innerHTML = `
+    <div class="flex gap-1">
+      <input class="t-key" placeholder="key" value="${esc(t.key)}" style="width:35%">
+      <input class="t-label" placeholder="label" value="${esc(t.label)}">
+      <button class="t-del btn-ghost shrink-0 px-2">×</button>
+    </div>
+    <textarea class="t-desc" rows="2" placeholder="description">${esc(t.description)}</textarea>
+    <select class="t-policy">
+      ${['remove','hold','tolerate'].map(p =>
+        `<option ${p===t.policy?'selected':''}>${p}</option>`).join('')}
+    </select>`;
+  row.querySelector('.t-del').onclick = () => row.remove();
+  return row;
+}
+
+function loadBriefForm(brief) {
+  document.getElementById('brief-context').value = brief.creator_context;
+  const topics = document.getElementById('topics');
+  topics.innerHTML = '';
+  brief.topics.forEach(t => topics.appendChild(topicRow(t)));
+}
+
+document.getElementById('add-topic').onclick = () =>
+  document.getElementById('topics').appendChild(topicRow());
+
+document.getElementById('brief-preset').onchange = e => {
+  if (presets[e.target.value]) loadBriefForm(presets[e.target.value]);
+};
+
+document.getElementById('apply-brief').onclick = async () => {
+  const topics = [...document.querySelectorAll('.topic-row')].map(row => ({
+    key: row.querySelector('.t-key').value.trim(),
+    label: row.querySelector('.t-label').value.trim(),
+    description: row.querySelector('.t-desc').value.trim(),
+    policy: row.querySelector('.t-policy').value,
+  })).filter(t => t.key && t.description);
+  const body = {
+    name: document.getElementById('brief-preset').value || 'custom',
+    creator_context: document.getElementById('brief-context').value,
+    topics,
+  };
+  const res = await fetch('/brief/apply', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const out = await res.json();
+  if (!res.ok || !out.ok) alert('apply failed: ' + JSON.stringify(out));
+};
+
+window.onBriefEvent = msg => {
+  document.getElementById('brief-version').textContent = 'v' + msg.version;
+};
+
+// ---------- split mode ----------
+async function pushSplit() {
+  const on = document.getElementById('split-toggle').checked;
+  const key = document.getElementById('split-preset').value;
+  await fetch('/split', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify({preset_key: on ? key : null})});
+}
+document.getElementById('split-toggle').onchange = pushSplit;
+document.getElementById('split-preset').onchange = () => {
+  if (document.getElementById('split-toggle').checked) pushSplit();
+};
+
 // ---------- SSE ----------
 const events = new EventSource('/events');
 events.onmessage = e => {
@@ -222,6 +303,17 @@ fetch('/snapshot').then(r => r.json()).then(snap => {
   renderStats(snap.stats);
   renderTwitch(snap.twitch.status, snap.twitch.channel);
   if (snap.api_key_missing) showBanner('TYPESAFE_API_KEY missing in .env — messages flow but nothing is classified. Add the key and restart.');
+  presets = snap.presets;
+  const presetSel = document.getElementById('brief-preset');
+  const splitSel = document.getElementById('split-preset');
+  presetSel.innerHTML = splitSel.innerHTML = Object.entries(presets).map(([k, b]) =>
+    `<option value="${esc(k)}">${esc(b.name)}</option>`).join('');
+  loadBriefForm(snap.brief);
+  document.getElementById('brief-version').textContent = 'v' + snap.brief_version;
+  if (snap.split_key) {
+    document.getElementById('split-toggle').checked = true;
+    splitSel.value = snap.split_key;
+  }
   window.onSnapshot && window.onSnapshot(snap);   // brief editor hook (step 3)
 });
 </script>

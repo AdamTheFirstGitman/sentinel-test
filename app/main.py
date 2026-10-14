@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app import config
-from app.brief import PRESETS
+from app.brief import PRESETS, Brief, Topic
 from app.pipeline import Pipeline
 from app.twitch import TwitchSource
 
@@ -84,3 +84,27 @@ async def twitch_join(req: JoinRequest) -> dict:
 async def twitch_part() -> dict:
     await twitch.part()
     return {"ok": True}
+
+
+class BriefRequest(BaseModel):
+    name: str = "custom"
+    creator_context: str
+    topics: list[Topic]
+
+
+@app.post("/brief/apply")
+async def brief_apply(req: BriefRequest) -> dict:
+    version = pipeline.apply_brief(Brief(**req.model_dump()))
+    return {"ok": True, "brief_version": version}
+
+
+class SplitRequest(BaseModel):
+    preset_key: str | None = None
+
+
+@app.post("/split")
+async def split(req: SplitRequest) -> dict:
+    if req.preset_key is not None and req.preset_key not in PRESETS:
+        return {"ok": False, "error": "unknown preset"}
+    pipeline.set_split(req.preset_key)
+    return {"ok": True, "split_key": pipeline.split_key}
