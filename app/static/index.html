@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sentinel-test</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background:#0b0f14; color:#d7dde4; }
+  .panel { background:#121820; border:1px solid #1f2a36; border-radius:0.5rem; }
+  input, textarea, select { background:#0b0f14; border:1px solid #2a3847; border-radius:0.375rem;
+    padding:0.3rem 0.5rem; font-size:0.8rem; color:#d7dde4; width:100%; }
+  button { border-radius:0.375rem; padding:0.3rem 0.7rem; font-size:0.8rem; font-weight:600; }
+  .btn-primary { background:#2563eb; color:white; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-ghost { background:#1f2a36; color:#9fb0c0; } .btn-ghost:hover { background:#2a3847; }
+  .chip { font-size:0.7rem; padding:0.15rem 0.6rem; border-radius:999px; background:#1f2a36;
+    color:#9fb0c0; cursor:pointer; }
+  .chip.active { background:#2563eb; color:white; }
+</style>
+</head>
+<body class="h-screen overflow-hidden text-sm">
+
+<div id="banner" class="hidden px-4 py-2 bg-red-900/80 text-red-100 text-xs font-semibold"></div>
+
+<div class="grid grid-cols-[280px_1fr_300px] gap-3 p-3 h-full">
+
+  <!-- LEFT: sources + brief -->
+  <div class="flex flex-col gap-3 overflow-y-auto pr-1">
+    <div class="panel p-3">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Twitch (live, read-only)</h2>
+      <div class="flex gap-2">
+        <input id="twitch-channel" placeholder="channel name">
+        <button id="twitch-btn" class="btn-primary shrink-0">Join</button>
+      </div>
+      <div id="twitch-status" class="text-xs text-slate-500 mt-2">disconnected</div>
+    </div>
+
+    <div class="panel p-3 text-xs text-slate-500" id="instagram-panel">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Instagram</h2>
+      coming in step 4
+    </div>
+
+    <div class="panel p-3 text-xs text-slate-500" id="brief-panel">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Brief</h2>
+      coming in step 3
+    </div>
+  </div>
+
+  <!-- CENTRE: live feed -->
+  <div class="flex flex-col panel overflow-hidden">
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-[#1f2a36]">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mr-2">Feed</h2>
+      <span class="chip active" data-filter="all">all</span>
+      <span class="chip" data-filter="hostile">hostile only</span>
+      <span class="chip" data-filter="grey">grey zone &lt;0.6</span>
+      <span class="flex-1"></span>
+      <span id="split-slot" class="text-xs text-slate-500"></span>
+    </div>
+    <div id="feed" class="flex-1 overflow-y-auto divide-y divide-[#17202b]"></div>
+  </div>
+
+  <!-- RIGHT: stats + tools -->
+  <div class="flex flex-col gap-3 overflow-y-auto pr-1">
+    <div class="panel p-3">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Stats</h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs" id="stats-grid"></div>
+      <div class="mt-3">
+        <div class="text-xs text-slate-500 mb-1">class distribution</div>
+        <div id="class-dist" class="flex h-3 rounded overflow-hidden bg-[#1f2a36]"></div>
+        <div id="class-legend" class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-400"></div>
+      </div>
+    </div>
+    <div class="panel p-3 text-xs text-slate-500" id="tools-panel">
+      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Tools</h2>
+      coming in step 5
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- class colours ----------
+const FIXED_COLORS = { ok:'#10b981', noise:'#64748b', critique:'#f59e0b', hostile_other:'#ef4444' };
+const HOSTILE_PALETTE = ['#e11d48', '#c026d3', '#9333ea', '#ea580c', '#db2777'];
+const colorCache = {};
+function classColor(klass) {
+  if (FIXED_COLORS[klass]) return FIXED_COLORS[klass];
+  if (!(klass in colorCache)) {
+    colorCache[klass] = HOSTILE_PALETTE[Object.keys(colorCache).length % HOSTILE_PALETTE.length];
+  }
+  return colorCache[klass];
+}
+
+// ---------- state ----------
+let filter = 'all';
+const MAX_ROWS = 200;
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ---------- feed rendering ----------
+function probBar(probs) {
+  const segs = Object.entries(probs).sort((a,b)=>b[1]-a[1]).map(([k,v]) =>
+    `<div title="${esc(k)}: ${(v*100).toFixed(0)}%" style="width:${v*100}%;background:${classColor(k)}"></div>`);
+  return `<div class="flex h-1.5 rounded overflow-hidden bg-[#1f2a36] mt-1">${segs.join('')}</div>`;
+}
+
+function verdictBlock(v) {
+  return `<div class="flex items-center gap-2">
+    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+          style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
+    <span class="text-[10px] text-slate-400">conf ${(v.confidence).toFixed(2)}</span>
+    <span class="text-[10px] text-slate-500">${v.latency_ms}ms · $${v.cost_usd.toFixed(6)} · v${v.brief_version}</span>
+  </div>${probBar(v.probabilities)}`;
+}
+
+function rowMatchesFilter(row) {
+  if (filter === 'hostile') return row.verdict.klass.startsWith('hostile');
+  if (filter === 'grey') return row.verdict.confidence < 0.6;
+  return true;
+}
+
+function addRow(row) {
+  const feed = document.getElementById('feed');
+  const el = document.createElement('div');
+  el.className = 'px-3 py-2 feed-row';
+  el.dataset.row = JSON.stringify(row);
+  const time = new Date(row.ts * 1000).toLocaleTimeString();
+  const badges = (row.author.badges || []).map(b => b.split('/')[0]).slice(0,3).join(',');
+  const splitBlock = row.split
+    ? `<div class="mt-1 pl-2 border-l-2 border-[#2a3847]">
+         <div class="text-[10px] text-slate-500 mb-0.5">split · ${esc(row.split_key || '')}</div>
+         ${verdictBlock(row.split)}</div>`
+    : '';
+  el.innerHTML = `
+    <div class="flex items-baseline gap-2">
+      <span class="text-[10px] text-slate-500 shrink-0">${time}</span>
+      <span class="font-semibold text-xs text-slate-300 shrink-0">${esc(row.author.name)}</span>
+      ${badges ? `<span class="text-[9px] text-slate-500">[${esc(badges)}]</span>` : ''}
+      ${row.author.is_new_to_stream ? '<span class="text-[9px] text-sky-400">new</span>' : ''}
+      <span class="text-[10px] text-slate-600 ml-auto shrink-0">${esc(row.source)}</span>
+    </div>
+    <div class="text-xs text-slate-200 my-1 break-words">${esc(row.text)}</div>
+    ${verdictBlock(row.verdict)}
+    ${splitBlock}
+    <div class="row-actions mt-1"></div>`;
+  el.style.display = rowMatchesFilter(row) ? '' : 'none';
+  feed.prepend(el);
+  while (feed.children.length > MAX_ROWS) feed.lastChild.remove();
+  window.decorateRow && window.decorateRow(el);   // label control hook (step 5)
+}
+
+document.querySelectorAll('.chip[data-filter]').forEach(chip => chip.onclick = () => {
+  document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  filter = chip.dataset.filter;
+  document.querySelectorAll('.feed-row').forEach(el => {
+    el.style.display = rowMatchesFilter(JSON.parse(el.dataset.row)) ? '' : 'none';
+  });
+});
+
+// ---------- stats ----------
+function renderStats(s) {
+  const pairs = [
+    ['msgs/min', s.msgs_per_min], ['classified', s.classified],
+    ['dropped', s.dropped], ['queue', s.queue_size],
+    ['p50 latency', s.latency_p50 + 'ms'], ['p95 latency', s.latency_p95 + 'ms'],
+    ['cost', '$' + s.cost_usd.toFixed(4) + ' / $' + s.max_cost_usd.toFixed(2)],
+    ['brief', 'v' + s.brief_version],
+  ];
+  document.getElementById('stats-grid').innerHTML = pairs.map(([k, v]) =>
+    `<div class="text-slate-500">${k}</div><div class="text-right font-mono">${v}</div>`).join('');
+
+  const total = Object.values(s.class_counts).reduce((a,b)=>a+b, 0) || 1;
+  document.getElementById('class-dist').innerHTML =
+    Object.entries(s.class_counts).sort((a,b)=>b[1]-a[1]).map(([k, n]) =>
+      `<div title="${esc(k)}: ${n}" style="width:${n/total*100}%;background:${classColor(k)}"></div>`).join('');
+  document.getElementById('class-legend').innerHTML =
+    Object.entries(s.class_counts).sort((a,b)=>b[1]-a[1]).map(([k, n]) =>
+      `<span><span style="color:${classColor(k)}">●</span> ${esc(k)} ${n}</span>`).join('');
+  if (s.paused) showBanner(`Budget exceeded ($${s.cost_usd.toFixed(2)} / $${s.max_cost_usd.toFixed(2)}) — classification paused.`);
+}
+
+function showBanner(text) {
+  const b = document.getElementById('banner');
+  b.textContent = text;
+  b.classList.remove('hidden');
+}
+
+// ---------- twitch controls ----------
+const twitchBtn = document.getElementById('twitch-btn');
+let twitchConnected = false;
+twitchBtn.onclick = async () => {
+  if (twitchConnected) {
+    await fetch('/twitch/part', {method:'POST'});
+  } else {
+    const channel = document.getElementById('twitch-channel').value.trim();
+    if (!channel) return;
+    await fetch('/twitch/join', {method:'POST', headers:{'Content-Type':'application/json'},
+                                 body: JSON.stringify({channel})});
+  }
+};
+function renderTwitch(status, channel) {
+  twitchConnected = status === 'connected' || status === 'connecting' || status === 'reconnecting';
+  twitchBtn.textContent = twitchConnected ? 'Leave' : 'Join';
+  twitchBtn.className = (twitchConnected ? 'btn-ghost' : 'btn-primary') + ' shrink-0';
+  document.getElementById('twitch-status').textContent =
+    channel ? `${status} — #${channel}` : status;
+}
+
+// ---------- SSE ----------
+const events = new EventSource('/events');
+events.onmessage = e => {
+  const msg = JSON.parse(e.data);
+  if (msg.type === 'message') addRow(msg.row);
+  else if (msg.type === 'stats') renderStats(msg.stats);
+  else if (msg.type === 'twitch') renderTwitch(msg.status, msg.channel);
+  else if (msg.type === 'banner') showBanner(msg.text);
+  else if (msg.type === 'error') console.warn('classify error:', msg.detail);
+  else if (msg.type === 'brief') window.onBriefEvent && window.onBriefEvent(msg);
+};
+
+// ---------- initial snapshot ----------
+fetch('/snapshot').then(r => r.json()).then(snap => {
+  renderStats(snap.stats);
+  renderTwitch(snap.twitch.status, snap.twitch.channel);
+  if (snap.api_key_missing) showBanner('TYPESAFE_API_KEY missing in .env — messages flow but nothing is classified. Add the key and restart.');
+  window.onSnapshot && window.onSnapshot(snap);   // brief editor hook (step 3)
+});
+</script>
+</body>
+</html>

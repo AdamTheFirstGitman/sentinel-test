@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+HAS_API_KEY = bool(os.getenv("TYPESAFE_API_KEY"))
 JEV_MODEL = os.getenv("JEV_MODEL") or "jev-latest"
 MAX_COST_USD = float(os.getenv("MAX_COST_USD") or "2.00")
 
