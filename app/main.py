@@ -1,4 +1,4 @@
-"""FastAPI wiring: one page, one SSE stream, small JSON endpoints."""
+"""FastAPI wiring: one page, one SSE stream, small JSON endpoints — all source-scoped."""
 
 import asyncio
 import contextlib
@@ -10,26 +10,27 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app import config
-from app.brief import PRESETS, Brief, Topic
-from app.instagram import InstagramReplayer, fetch_graph_comments, parse_paste, parse_upload
+from app.brief import Brief, Topic
+from app.instagram import InstagramReplayer, fetch_comments_for_url, parse_paste, parse_upload
 from app.labels import append_label
 from app.perturb import PERTURBATIONS
-from app.pipeline import Pipeline
+from app.pipeline import SOURCES, Hub
 from app.twitch import TwitchSource
 
-pipeline = Pipeline()
-twitch = TwitchSource(pipeline)
-instagram = InstagramReplayer(pipeline)
+hub = Hub()
+twitch = TwitchSource(hub)
+instagram = InstagramReplayer(hub)
 
 STATIC = Path(__file__).parent / "static"
 
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
-    await pipeline.start()
+    await hub.start()
     yield
     await twitch.part()
-    await pipeline.stop()
+    instagram.stop()
+    await hub.stop()
 
 
 app = FastAPI(title="sentinel-test", lifespan=lifespan)
@@ -43,11 +44,9 @@ async def index() -> FileResponse:
 @app.get("/snapshot")
 async def snapshot() -> dict:
     return {
-        "stats": pipeline.stats(),
-        "brief": pipeline.brief.model_dump(),
-        "brief_version": pipeline.brief_version,
-        "split_key": pipeline.split_key,
-        "presets": {key: brief.model_dump() for key, brief in PRESETS.items()},
+        "stats": hub.stats(),
+        "briefs": {source: {"brief": s.brief.model_dump(), "version": s.brief_version}
+                   for source, s in hub.sentinels.items()},
         "twitch": {"status": twitch.status, "channel": twitch.channel},
         "ig_graph_enabled": config.IG_GRAPH_ENABLED,
         "model": config.JEV_MODEL,
@@ -57,11 +56,11 @@ async def snapshot() -> dict:
 
 @app.get("/events")
 async def events() -> StreamingResponse:
-    sub = pipeline.subscribe()
+    sub = hub.subscribe()
 
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'stats', 'stats': pipeline.stats()})}\n\n"
+            yield f"data: {json.dumps({'type': 'stats', 'stats': hub.stats()})}\n\n"
             while True:
                 try:
                     payload = await asyncio.wait_for(sub.get(), timeout=15)
@@ -69,10 +68,12 @@ async def events() -> StreamingResponse:
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
         finally:
-            pipeline.unsubscribe(sub)
+            hub.unsubscribe(sub)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
+
+# -- twitch -------------------------------------------------------------------
 
 class JoinRequest(BaseModel):
     channel: str
@@ -90,29 +91,7 @@ async def twitch_part() -> dict:
     return {"ok": True}
 
 
-class BriefRequest(BaseModel):
-    name: str = "custom"
-    creator_context: str
-    topics: list[Topic]
-
-
-@app.post("/brief/apply")
-async def brief_apply(req: BriefRequest) -> dict:
-    version = pipeline.apply_brief(Brief(**req.model_dump()))
-    return {"ok": True, "brief_version": version}
-
-
-class SplitRequest(BaseModel):
-    preset_key: str | None = None
-
-
-@app.post("/split")
-async def split(req: SplitRequest) -> dict:
-    if req.preset_key is not None and req.preset_key not in PRESETS:
-        return {"ok": False, "error": "unknown preset"}
-    pipeline.set_split(req.preset_key)
-    return {"ok": True, "split_key": pipeline.split_key}
-
+# -- instagram ----------------------------------------------------------------
 
 class ReplayRequest(BaseModel):
     text: str = ""           # paste mode: one comment per line
@@ -133,17 +112,19 @@ async def instagram_replay(req: ReplayRequest) -> dict:
     return {"ok": True, "total": len(comments)}
 
 
-class FetchRequest(BaseModel):
+class FetchUrlRequest(BaseModel):
+    url: str
     rate: float = 2.0
 
 
-@app.post("/instagram/fetch")
-async def instagram_fetch(req: FetchRequest) -> dict:
-    if not config.IG_GRAPH_ENABLED:
-        return {"ok": False, "error": "IG_ACCESS_TOKEN / IG_MEDIA_ID not set in .env"}
-    comments = await fetch_graph_comments()
+@app.post("/instagram/fetch_url")
+async def instagram_fetch_url(req: FetchUrlRequest) -> dict:
+    try:
+        comments = await fetch_comments_for_url(req.url)
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc)}
     if not comments:
-        return {"ok": False, "error": "no comments returned"}
+        return {"ok": False, "error": "no comments on this post"}
     instagram.start(comments, req.rate)
     return {"ok": True, "total": len(comments)}
 
@@ -154,20 +135,42 @@ async def instagram_stop() -> dict:
     return {"ok": True}
 
 
+# -- per-source brief / tools ---------------------------------------------------
+
+class BriefRequest(BaseModel):
+    source: str
+    name: str = "custom"
+    creator_context: str
+    topics: list[Topic]
+
+
+@app.post("/brief/apply")
+async def brief_apply(req: BriefRequest) -> dict:
+    if req.source not in SOURCES:
+        return {"ok": False, "error": "unknown source"}
+    version = hub.sentinels[req.source].apply_brief(
+        Brief(name=req.name, creator_context=req.creator_context, topics=req.topics))
+    return {"ok": True, "brief_version": version}
+
+
 class PerturbRequest(BaseModel):
-    text: str = ""  # empty = last message seen by the pipeline
+    source: str
+    text: str = ""  # empty = last message seen by that sentinel
 
 
 @app.post("/perturb")
 async def perturb(req: PerturbRequest) -> dict:
-    text = req.text.strip() or (pipeline.last_message.text if pipeline.last_message else "")
+    if req.source not in SOURCES:
+        return {"ok": False, "error": "unknown source"}
+    sentinel = hub.sentinels[req.source]
+    text = req.text.strip() or (sentinel.last_text or "")
     if not text:
         return {"ok": False, "error": "no message to perturb yet"}
     results = []
     try:
         for name, fn in PERTURBATIONS.items():
             variant = fn(text)
-            verdict = await pipeline.classify_adhoc(variant)
+            verdict = await sentinel.classify_adhoc(variant)
             results.append({"name": name, "text": variant, "verdict": verdict})
     except RuntimeError as exc:  # budget pause
         return {"ok": False, "error": str(exc)}

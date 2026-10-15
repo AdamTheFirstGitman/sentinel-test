@@ -16,92 +16,110 @@
   .chip { font-size:0.7rem; padding:0.15rem 0.6rem; border-radius:999px; background:#1f2a36;
     color:#9fb0c0; cursor:pointer; }
   .chip.active { background:#2563eb; color:white; }
+  .tab { font-size:0.8rem; font-weight:700; padding:0.3rem 1rem; border-radius:0.375rem;
+    color:#9fb0c0; cursor:pointer; }
+  .tab.active-twitch { background:#7c3aed; color:white; }
+  .tab.active-instagram { background:#db2777; color:white; }
 </style>
 </head>
-<body class="h-screen overflow-hidden text-sm">
+<body class="h-screen overflow-hidden text-sm flex flex-col">
 
 <div id="banner" class="hidden px-4 py-2 bg-red-900/80 text-red-100 text-xs font-semibold"></div>
 
-<div class="grid grid-cols-[280px_1fr_300px] gap-3 p-3 h-full">
+<header class="flex items-center gap-3 px-4 py-2 border-b border-[#1f2a36]">
+  <span class="font-bold text-slate-300">sentinel-test</span>
+  <span class="tab" data-tab="twitch">Twitch</span>
+  <span class="tab" data-tab="instagram">Instagram</span>
+  <span class="flex-1"></span>
+  <span id="global-cost" class="text-xs font-mono text-slate-400"></span>
+</header>
 
-  <!-- LEFT: sources + brief -->
-  <div class="flex flex-col gap-3 overflow-y-auto pr-1">
-    <div class="panel p-3">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Twitch (live, read-only)</h2>
-      <div class="flex gap-2">
-        <input id="twitch-channel" placeholder="channel name">
-        <button id="twitch-btn" class="btn-primary shrink-0">Join</button>
+<!-- The two views are identical shells; everything inside is scoped by data-source. -->
+<main id="views" class="flex-1 min-h-0"></main>
+
+<template id="view-template">
+  <section class="grid grid-cols-[300px_1fr_300px] gap-3 p-3 h-full min-h-0">
+
+    <!-- LEFT: source controls + brief -->
+    <div class="flex flex-col gap-3 overflow-y-auto pr-1">
+      <div class="panel p-3" data-slot="source"></div>
+
+      <div class="panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400">Brief</h2>
+          <span data-el="brief-version" class="text-[10px] text-slate-500 font-mono">v1</span>
+        </div>
+        <textarea data-el="brief-context" rows="4" class="mb-2" placeholder="creator context"></textarea>
+        <div data-el="topics" class="flex flex-col gap-2 mb-2"></div>
+        <div class="flex gap-2">
+          <button data-el="add-topic" class="btn-ghost flex-1">+ topic</button>
+          <button data-el="apply-brief" class="btn-primary flex-1">Apply brief</button>
+        </div>
       </div>
-      <div id="twitch-status" class="text-xs text-slate-500 mt-2">disconnected</div>
     </div>
 
-    <div class="panel p-3" id="instagram-panel">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Instagram (replay, read-only)</h2>
-      <textarea id="ig-paste" rows="4" class="mb-2"
-        placeholder="one comment per line&#10;author: text  (or just text)"></textarea>
-      <div class="flex gap-2 items-center mb-2">
-        <input type="file" id="ig-file" accept=".json,.csv,.txt" class="text-[10px] p-0 border-0">
+    <!-- CENTRE: feed -->
+    <div class="flex flex-col panel overflow-hidden min-h-0">
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-[#1f2a36]">
+        <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mr-2">Feed</h2>
+        <span class="chip active" data-filter="all">all</span>
+        <span class="chip" data-filter="hostile">hostile only</span>
+        <span class="chip" data-filter="grey">grey zone &lt;0.6</span>
       </div>
-      <div class="flex gap-2 items-center">
-        <label class="text-[10px] text-slate-500 shrink-0">rate/s</label>
-        <input type="number" id="ig-rate" value="2" min="0.1" max="20" step="0.5" style="width:4rem">
-        <button id="ig-replay" class="btn-primary flex-1">Replay</button>
-        <button id="ig-stop" class="btn-ghost">Stop</button>
-      </div>
-      <button id="ig-fetch" class="btn-ghost w-full mt-2 hidden">Fetch via Graph API</button>
-      <div id="ig-status" class="text-[10px] text-slate-500 mt-2"></div>
+      <div data-el="feed" class="flex-1 overflow-y-auto divide-y divide-[#17202b]"></div>
     </div>
 
-    <div class="panel p-3" id="brief-panel">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400">Brief</h2>
-        <span id="brief-version" class="text-[10px] text-slate-500 font-mono">v1</span>
+    <!-- RIGHT: stats + tools -->
+    <div class="flex flex-col gap-3 overflow-y-auto pr-1">
+      <div class="panel p-3">
+        <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Stats</h2>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs" data-el="stats-grid"></div>
+        <div class="mt-3">
+          <div class="text-xs text-slate-500 mb-1">class distribution</div>
+          <div data-el="class-dist" class="flex h-3 rounded overflow-hidden bg-[#1f2a36]"></div>
+          <div data-el="class-legend" class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-400"></div>
+        </div>
       </div>
-      <select id="brief-preset" class="mb-2"></select>
-      <textarea id="brief-context" rows="4" class="mb-2" placeholder="creator context"></textarea>
-      <div id="topics" class="flex flex-col gap-2 mb-2"></div>
-      <div class="flex gap-2">
-        <button id="add-topic" class="btn-ghost flex-1">+ topic</button>
-        <button id="apply-brief" class="btn-primary flex-1">Apply brief</button>
+      <div class="panel p-3">
+        <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Perturbations</h2>
+        <input data-el="perturb-text" placeholder="(empty = last message)" class="mb-2">
+        <button data-el="perturb-btn" class="btn-primary w-full">Replay with perturbations</button>
+        <div data-el="perturb-results" class="mt-2 flex flex-col gap-1 text-xs"></div>
       </div>
     </div>
+  </section>
+</template>
+
+<template id="twitch-source-template">
+  <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Twitch chat (live, read-only)</h2>
+  <div class="flex gap-2">
+    <input data-el="twitch-channel" placeholder="channel name">
+    <button data-el="twitch-btn" class="btn-primary shrink-0">Join</button>
   </div>
+  <div data-el="twitch-status" class="text-xs text-slate-500 mt-2">disconnected</div>
+</template>
 
-  <!-- CENTRE: live feed -->
-  <div class="flex flex-col panel overflow-hidden">
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-[#1f2a36]">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mr-2">Feed</h2>
-      <span class="chip active" data-filter="all">all</span>
-      <span class="chip" data-filter="hostile">hostile only</span>
-      <span class="chip" data-filter="grey">grey zone &lt;0.6</span>
-      <span class="flex-1"></span>
-      <label class="flex items-center gap-1 text-xs text-slate-400">
-        <input type="checkbox" id="split-toggle" class="w-auto">split vs
-        <select id="split-preset" class="w-auto text-xs py-0.5"></select>
-      </label>
-    </div>
-    <div id="feed" class="flex-1 overflow-y-auto divide-y divide-[#17202b]"></div>
+<template id="instagram-source-template">
+  <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Instagram post (read-only)</h2>
+  <div class="flex gap-2 mb-2">
+    <input data-el="ig-url" placeholder="https://www.instagram.com/p/…">
+    <button data-el="ig-load" class="btn-primary shrink-0">Load</button>
   </div>
-
-  <!-- RIGHT: stats + tools -->
-  <div class="flex flex-col gap-3 overflow-y-auto pr-1">
-    <div class="panel p-3">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Stats</h2>
-      <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs" id="stats-grid"></div>
-      <div class="mt-3">
-        <div class="text-xs text-slate-500 mb-1">class distribution</div>
-        <div id="class-dist" class="flex h-3 rounded overflow-hidden bg-[#1f2a36]"></div>
-        <div id="class-legend" class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-400"></div>
-      </div>
-    </div>
-    <div class="panel p-3" id="tools-panel">
-      <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Perturbations</h2>
-      <input id="perturb-text" placeholder="(empty = last message)" class="mb-2">
-      <button id="perturb-btn" class="btn-primary w-full">Replay with perturbations</button>
-      <div id="perturb-results" class="mt-2 flex flex-col gap-1 text-xs"></div>
-    </div>
+  <details class="mb-2">
+    <summary class="text-[10px] text-slate-500 cursor-pointer">or paste / upload comments</summary>
+    <textarea data-el="ig-paste" rows="4" class="my-2"
+      placeholder="one comment per line&#10;author: text  (or just text)"></textarea>
+    <input type="file" data-el="ig-file" accept=".json,.csv,.txt" class="text-[10px] p-0 border-0 mb-2">
+    <button data-el="ig-replay" class="btn-ghost w-full">Replay pasted / uploaded</button>
+  </details>
+  <div class="flex gap-2 items-center">
+    <label class="text-[10px] text-slate-500 shrink-0">rate/s</label>
+    <input type="number" data-el="ig-rate" value="2" min="0.1" max="20" step="0.5" style="width:4.5rem">
+    <span class="flex-1"></span>
+    <button data-el="ig-stop" class="btn-ghost">Stop</button>
   </div>
-</div>
+  <div data-el="ig-status" class="text-[10px] text-slate-500 mt-2"></div>
+</template>
 
 <script>
 // ---------- class colours ----------
@@ -116,12 +134,18 @@ function classColor(klass) {
   return colorCache[klass];
 }
 
-// ---------- state ----------
-let filter = 'all';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MAX_ROWS = 200;
-const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                                        body: JSON.stringify(body)}).then(r => r.json());
 
-// ---------- feed rendering ----------
+function showBanner(text) {
+  const b = document.getElementById('banner');
+  b.textContent = text;
+  b.classList.remove('hidden');
+}
+
+// ---------- shared row rendering ----------
 function probBar(probs) {
   const segs = Object.entries(probs).sort((a,b)=>b[1]-a[1]).map(([k,v]) =>
     `<div title="${esc(k)}: ${(v*100).toFixed(0)}%" style="width:${v*100}%;background:${classColor(k)}"></div>`);
@@ -132,275 +156,250 @@ function verdictBlock(v) {
   return `<div class="flex items-center gap-2">
     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
           style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
-    <span class="text-[10px] text-slate-400">conf ${(v.confidence).toFixed(2)}</span>
+    <span class="text-[10px] text-slate-400">conf ${v.confidence.toFixed(2)}</span>
     <span class="text-[10px] text-slate-500">${v.latency_ms}ms · $${v.cost_usd.toFixed(6)} · v${v.brief_version}</span>
   </div>${probBar(v.probabilities)}`;
 }
 
-function rowMatchesFilter(row) {
-  if (filter === 'hostile') return row.verdict.klass.startsWith('hostile');
-  if (filter === 'grey') return row.verdict.confidence < 0.6;
-  return true;
-}
+// ---------- one view per source ----------
+class View {
+  constructor(source) {
+    this.source = source;
+    this.filter = 'all';
+    this.root = document.getElementById('view-template').content.firstElementChild.cloneNode(true);
+    this.root.id = `view-${source}`;
+    this.root.querySelector('[data-slot="source"]').append(
+      document.getElementById(`${source}-source-template`).content.cloneNode(true));
+    document.getElementById('views').append(this.root);
+    this.el = {};
+    this.root.querySelectorAll('[data-el]').forEach(n => this.el[n.dataset.el] = n);
+    this.wireBrief();
+    this.wirePerturb();
+    this.wireFilters();
+  }
 
-function addRow(row) {
-  const feed = document.getElementById('feed');
-  const el = document.createElement('div');
-  el.className = 'px-3 py-2 feed-row';
-  el.dataset.row = JSON.stringify(row);
-  const time = new Date(row.ts * 1000).toLocaleTimeString();
-  const badges = (row.author.badges || []).map(b => b.split('/')[0]).slice(0,3).join(',');
-  const splitBlock = row.split
-    ? `<div class="mt-1 pl-2 border-l-2 border-[#2a3847]">
-         <div class="text-[10px] text-slate-500 mb-0.5">split · ${esc(row.split_key || '')}</div>
-         ${verdictBlock(row.split)}</div>`
-    : '';
-  el.innerHTML = `
-    <div class="flex items-baseline gap-2">
-      <span class="text-[10px] text-slate-500 shrink-0">${time}</span>
-      <span class="font-semibold text-xs text-slate-300 shrink-0">${esc(row.author.name)}</span>
-      ${badges ? `<span class="text-[9px] text-slate-500">[${esc(badges)}]</span>` : ''}
-      ${row.author.is_new_to_stream ? '<span class="text-[9px] text-sky-400">new</span>' : ''}
-      <span class="text-[10px] text-slate-600 ml-auto shrink-0">${esc(row.source)}</span>
-    </div>
-    <div class="text-xs text-slate-200 my-1 break-words">${esc(row.text)}</div>
-    ${verdictBlock(row.verdict)}
-    ${splitBlock}
-    <div class="row-actions mt-1"></div>`;
-  el.style.display = rowMatchesFilter(row) ? '' : 'none';
-  feed.prepend(el);
-  while (feed.children.length > MAX_ROWS) feed.lastChild.remove();
-  window.decorateRow && window.decorateRow(el);   // label control hook (step 5)
-}
+  // -- feed --
+  rowMatches(row) {
+    if (this.filter === 'hostile') return row.verdict.klass.startsWith('hostile');
+    if (this.filter === 'grey') return row.verdict.confidence < 0.6;
+    return true;
+  }
 
-document.querySelectorAll('.chip[data-filter]').forEach(chip => chip.onclick = () => {
-  document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
-  chip.classList.add('active');
-  filter = chip.dataset.filter;
-  document.querySelectorAll('.feed-row').forEach(el => {
-    el.style.display = rowMatchesFilter(JSON.parse(el.dataset.row)) ? '' : 'none';
-  });
-});
+  addRow(row) {
+    const el = document.createElement('div');
+    el.className = 'px-3 py-2 feed-row';
+    el.dataset.row = JSON.stringify(row);
+    const time = new Date(row.ts * 1000).toLocaleTimeString();
+    const badges = (row.author.badges || []).map(b => b.split('/')[0]).slice(0,3).join(',');
+    el.innerHTML = `
+      <div class="flex items-baseline gap-2">
+        <span class="text-[10px] text-slate-500 shrink-0">${time}</span>
+        <span class="font-semibold text-xs text-slate-300 shrink-0">${esc(row.author.name)}</span>
+        ${badges ? `<span class="text-[9px] text-slate-500">[${esc(badges)}]</span>` : ''}
+        ${row.author.is_new_to_stream ? '<span class="text-[9px] text-sky-400">new</span>' : ''}
+      </div>
+      <div class="text-xs text-slate-200 my-1 break-words">${esc(row.text)}</div>
+      ${verdictBlock(row.verdict)}
+      <div class="row-actions mt-1 flex items-center gap-1"></div>`;
+    el.style.display = this.rowMatches(row) ? '' : 'none';
+    this.decorateRow(el, row);
+    this.el.feed.prepend(el);
+    while (this.el.feed.children.length > MAX_ROWS) this.el.feed.lastChild.remove();
+  }
 
-// ---------- stats ----------
-function renderStats(s) {
-  const pairs = [
-    ['msgs/min', s.msgs_per_min], ['classified', s.classified],
-    ['dropped', s.dropped], ['queue', s.queue_size],
-    ['p50 latency', s.latency_p50 + 'ms'], ['p95 latency', s.latency_p95 + 'ms'],
-    ['cost', '$' + s.cost_usd.toFixed(4) + ' / $' + s.max_cost_usd.toFixed(2)],
-    ['brief', 'v' + s.brief_version],
-  ];
-  document.getElementById('stats-grid').innerHTML = pairs.map(([k, v]) =>
-    `<div class="text-slate-500">${k}</div><div class="text-right font-mono">${v}</div>`).join('');
+  decorateRow(el, row) {
+    const classes = Object.keys(row.verdict.probabilities);
+    const slot = el.querySelector('.row-actions');
+    slot.innerHTML = `
+      <span class="text-[10px] text-slate-500">I'd have said:</span>
+      <select class="label-class w-auto text-[10px] py-0 px-1">
+        ${classes.map(c => `<option ${c===row.verdict.klass?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>
+      <button class="label-send btn-ghost text-[10px] py-0 px-1.5">label</button>`;
+    slot.querySelector('.label-send').onclick = async () => {
+      const my = slot.querySelector('.label-class').value;
+      await post('/label', {source: this.source, text: row.text,
+        previous_messages: row.previous_messages, brief_version: row.verdict.brief_version,
+        jev_class: row.verdict.klass, my_class: my});
+      slot.innerHTML = `<span class="text-[10px] text-emerald-400">labelled: ${esc(my)}</span>`;
+    };
+  }
 
-  const total = Object.values(s.class_counts).reduce((a,b)=>a+b, 0) || 1;
-  document.getElementById('class-dist').innerHTML =
-    Object.entries(s.class_counts).sort((a,b)=>b[1]-a[1]).map(([k, n]) =>
+  wireFilters() {
+    this.root.querySelectorAll('.chip[data-filter]').forEach(chip => chip.onclick = () => {
+      this.root.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      this.filter = chip.dataset.filter;
+      this.el.feed.querySelectorAll('.feed-row').forEach(el => {
+        el.style.display = this.rowMatches(JSON.parse(el.dataset.row)) ? '' : 'none';
+      });
+    });
+  }
+
+  // -- brief editor --
+  topicRow(t = {key:'', label:'', description:'', policy:'remove'}) {
+    const row = document.createElement('div');
+    row.className = 'topic-row border border-[#1f2a36] rounded p-2 flex flex-col gap-1';
+    row.innerHTML = `
+      <div class="flex gap-1">
+        <input class="t-key" placeholder="key" value="${esc(t.key)}" style="width:35%">
+        <input class="t-label" placeholder="label" value="${esc(t.label)}">
+        <button class="t-del btn-ghost shrink-0 px-2">×</button>
+      </div>
+      <textarea class="t-desc" rows="2" placeholder="description">${esc(t.description)}</textarea>
+      <select class="t-policy">
+        ${['remove','hold','tolerate'].map(p =>
+          `<option ${p===t.policy?'selected':''}>${p}</option>`).join('')}
+      </select>`;
+    row.querySelector('.t-del').onclick = () => row.remove();
+    return row;
+  }
+
+  loadBrief(brief, version) {
+    this.el['brief-context'].value = brief.creator_context;
+    this.el.topics.innerHTML = '';
+    brief.topics.forEach(t => this.el.topics.appendChild(this.topicRow(t)));
+    this.el['brief-version'].textContent = 'v' + version;
+  }
+
+  wireBrief() {
+    this.el['add-topic'].onclick = () => this.el.topics.appendChild(this.topicRow());
+    this.el['apply-brief'].onclick = async () => {
+      const topics = [...this.el.topics.querySelectorAll('.topic-row')].map(row => ({
+        key: row.querySelector('.t-key').value.trim(),
+        label: row.querySelector('.t-label').value.trim(),
+        description: row.querySelector('.t-desc').value.trim(),
+        policy: row.querySelector('.t-policy').value,
+      })).filter(t => t.key && t.description);
+      const out = await post('/brief/apply', {source: this.source, name: this.source,
+        creator_context: this.el['brief-context'].value, topics});
+      if (!out.ok) alert('apply failed: ' + JSON.stringify(out));
+    };
+  }
+
+  // -- perturbation tool --
+  wirePerturb() {
+    this.el['perturb-btn'].onclick = async () => {
+      const box = this.el['perturb-results'];
+      box.innerHTML = '<span class="text-slate-500">classifying 4 variants…</span>';
+      const out = await post('/perturb', {source: this.source, text: this.el['perturb-text'].value});
+      if (!out.ok) { box.innerHTML = `<span class="text-red-400">${esc(out.error)}</span>`; return; }
+      box.innerHTML = `<div class="text-slate-500 break-words">original: ${esc(out.original)}</div>` +
+        out.results.map(r => `
+          <div class="border border-[#1f2a36] rounded p-1.5">
+            <div class="flex items-center gap-2">
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                    style="background:${classColor(r.verdict.klass)}">${esc(r.verdict.klass)}</span>
+              <span class="text-[10px] text-slate-400">conf ${r.verdict.confidence.toFixed(2)}</span>
+              <span class="text-[10px] text-slate-500 ml-auto">${esc(r.name)}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(r.text)}</div>
+          </div>`).join('');
+    };
+  }
+
+  // -- stats --
+  renderStats(s) {
+    const pairs = [
+      ['msgs/min', s.msgs_per_min], ['classified', s.classified],
+      ['dropped', s.dropped], ['queue', s.queue_size],
+      ['p50 latency', s.latency_p50 + 'ms'], ['p95 latency', s.latency_p95 + 'ms'],
+      ['brief', 'v' + s.brief_version],
+    ];
+    this.el['stats-grid'].innerHTML = pairs.map(([k, v]) =>
+      `<div class="text-slate-500">${k}</div><div class="text-right font-mono">${v}</div>`).join('');
+    const total = Object.values(s.class_counts).reduce((a,b)=>a+b, 0) || 1;
+    const sorted = Object.entries(s.class_counts).sort((a,b)=>b[1]-a[1]);
+    this.el['class-dist'].innerHTML = sorted.map(([k, n]) =>
       `<div title="${esc(k)}: ${n}" style="width:${n/total*100}%;background:${classColor(k)}"></div>`).join('');
-  document.getElementById('class-legend').innerHTML =
-    Object.entries(s.class_counts).sort((a,b)=>b[1]-a[1]).map(([k, n]) =>
+    this.el['class-legend'].innerHTML = sorted.map(([k, n]) =>
       `<span><span style="color:${classColor(k)}">●</span> ${esc(k)} ${n}</span>`).join('');
-  if (s.paused) showBanner(`Budget exceeded ($${s.cost_usd.toFixed(2)} / $${s.max_cost_usd.toFixed(2)}) — classification paused.`);
+  }
 }
 
-function showBanner(text) {
-  const b = document.getElementById('banner');
-  b.textContent = text;
-  b.classList.remove('hidden');
-}
+const views = { twitch: new View('twitch'), instagram: new View('instagram') };
 
-// ---------- twitch controls ----------
-const twitchBtn = document.getElementById('twitch-btn');
+// ---------- tabs ----------
+let activeTab = 'twitch';
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active-twitch', 'active-instagram');
+    if (t.dataset.tab === tab) t.classList.add(`active-${tab}`);
+  });
+  Object.entries(views).forEach(([s, v]) => v.root.style.display = s === tab ? '' : 'none');
+}
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => setTab(t.dataset.tab));
+setTab('twitch');
+
+// ---------- twitch source controls ----------
+const tEl = views.twitch.el;
 let twitchConnected = false;
-twitchBtn.onclick = async () => {
-  if (twitchConnected) {
-    await fetch('/twitch/part', {method:'POST'});
-  } else {
-    const channel = document.getElementById('twitch-channel').value.trim();
-    if (!channel) return;
-    await fetch('/twitch/join', {method:'POST', headers:{'Content-Type':'application/json'},
-                                 body: JSON.stringify({channel})});
+tEl['twitch-btn'].onclick = async () => {
+  if (twitchConnected) await post('/twitch/part', {});
+  else {
+    const channel = tEl['twitch-channel'].value.trim();
+    if (channel) await post('/twitch/join', {channel});
   }
 };
 function renderTwitch(status, channel) {
-  twitchConnected = status === 'connected' || status === 'connecting' || status === 'reconnecting';
-  twitchBtn.textContent = twitchConnected ? 'Leave' : 'Join';
-  twitchBtn.className = (twitchConnected ? 'btn-ghost' : 'btn-primary') + ' shrink-0';
-  document.getElementById('twitch-status').textContent =
-    channel ? `${status} — #${channel}` : status;
+  twitchConnected = ['connected', 'connecting', 'reconnecting'].includes(status);
+  tEl['twitch-btn'].textContent = twitchConnected ? 'Leave' : 'Join';
+  tEl['twitch-btn'].className = (twitchConnected ? 'btn-ghost' : 'btn-primary') + ' shrink-0';
+  tEl['twitch-status'].textContent = channel ? `${status} — #${channel}` : status;
 }
 
-// ---------- brief editor ----------
-let presets = {};
+// ---------- instagram source controls ----------
+const iEl = views.instagram.el;
+const igStatus = text => iEl['ig-status'].textContent = text;
+const igRate = () => parseFloat(iEl['ig-rate'].value) || 2;
 
-function topicRow(t = {key:'', label:'', description:'', policy:'remove'}) {
-  const row = document.createElement('div');
-  row.className = 'topic-row border border-[#1f2a36] rounded p-2 flex flex-col gap-1';
-  row.innerHTML = `
-    <div class="flex gap-1">
-      <input class="t-key" placeholder="key" value="${esc(t.key)}" style="width:35%">
-      <input class="t-label" placeholder="label" value="${esc(t.label)}">
-      <button class="t-del btn-ghost shrink-0 px-2">×</button>
-    </div>
-    <textarea class="t-desc" rows="2" placeholder="description">${esc(t.description)}</textarea>
-    <select class="t-policy">
-      ${['remove','hold','tolerate'].map(p =>
-        `<option ${p===t.policy?'selected':''}>${p}</option>`).join('')}
-    </select>`;
-  row.querySelector('.t-del').onclick = () => row.remove();
-  return row;
-}
-
-function loadBriefForm(brief) {
-  document.getElementById('brief-context').value = brief.creator_context;
-  const topics = document.getElementById('topics');
-  topics.innerHTML = '';
-  brief.topics.forEach(t => topics.appendChild(topicRow(t)));
-}
-
-document.getElementById('add-topic').onclick = () =>
-  document.getElementById('topics').appendChild(topicRow());
-
-document.getElementById('brief-preset').onchange = e => {
-  if (presets[e.target.value]) loadBriefForm(presets[e.target.value]);
+iEl['ig-load'].onclick = async () => {
+  const url = iEl['ig-url'].value.trim();
+  if (!url) return;
+  igStatus('fetching comments…');
+  const out = await post('/instagram/fetch_url', {url, rate: igRate()});
+  igStatus(out.ok ? `replaying ${out.total} comments at ${igRate()}/s` : `error: ${out.error}`);
 };
-
-document.getElementById('apply-brief').onclick = async () => {
-  const topics = [...document.querySelectorAll('.topic-row')].map(row => ({
-    key: row.querySelector('.t-key').value.trim(),
-    label: row.querySelector('.t-label').value.trim(),
-    description: row.querySelector('.t-desc').value.trim(),
-    policy: row.querySelector('.t-policy').value,
-  })).filter(t => t.key && t.description);
-  const body = {
-    name: document.getElementById('brief-preset').value || 'custom',
-    creator_context: document.getElementById('brief-context').value,
-    topics,
-  };
-  const res = await fetch('/brief/apply', {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-  const out = await res.json();
-  if (!res.ok || !out.ok) alert('apply failed: ' + JSON.stringify(out));
+iEl['ig-replay'].onclick = async () => {
+  const file = iEl['ig-file'].files[0];
+  const body = file ? {filename: file.name, content: await file.text(), rate: igRate()}
+                    : {text: iEl['ig-paste'].value, rate: igRate()};
+  const out = await post('/instagram/replay', body);
+  igStatus(out.ok ? `replaying ${out.total} comments at ${igRate()}/s` : `error: ${out.error}`);
 };
-
-window.onBriefEvent = msg => {
-  document.getElementById('brief-version').textContent = 'v' + msg.version;
-};
-
-// ---------- split mode ----------
-async function pushSplit() {
-  const on = document.getElementById('split-toggle').checked;
-  const key = document.getElementById('split-preset').value;
-  await fetch('/split', {method:'POST', headers:{'Content-Type':'application/json'},
-                         body: JSON.stringify({preset_key: on ? key : null})});
-}
-document.getElementById('split-toggle').onchange = pushSplit;
-document.getElementById('split-preset').onchange = () => {
-  if (document.getElementById('split-toggle').checked) pushSplit();
-};
-
-// ---------- instagram ----------
-const igStatus = text => document.getElementById('ig-status').textContent = text;
-
-document.getElementById('ig-replay').onclick = async () => {
-  const rate = parseFloat(document.getElementById('ig-rate').value) || 2;
-  const file = document.getElementById('ig-file').files[0];
-  let body;
-  if (file) body = {filename: file.name, content: await file.text(), rate};
-  else body = {text: document.getElementById('ig-paste').value, rate};
-  const out = await (await fetch('/instagram/replay', {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
-  igStatus(out.ok ? `replaying ${out.total} comments at ${rate}/s` : `error: ${out.error}`);
-};
-
-document.getElementById('ig-stop').onclick = async () => {
-  await fetch('/instagram/stop', {method:'POST'});
-  igStatus('stopped');
-};
-
-document.getElementById('ig-fetch').onclick = async () => {
-  igStatus('fetching…');
-  const rate = parseFloat(document.getElementById('ig-rate').value) || 2;
-  const out = await (await fetch('/instagram/fetch', {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify({rate})})).json();
-  igStatus(out.ok ? `replaying ${out.total} fetched comments at ${rate}/s` : `error: ${out.error}`);
-};
-
-// ---------- perturbation tool ----------
-document.getElementById('perturb-btn').onclick = async () => {
-  const box = document.getElementById('perturb-results');
-  box.innerHTML = '<span class="text-slate-500">classifying 4 variants…</span>';
-  const out = await (await fetch('/perturb', {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({text: document.getElementById('perturb-text').value})})).json();
-  if (!out.ok) { box.innerHTML = `<span class="text-red-400">${esc(out.error)}</span>`; return; }
-  box.innerHTML = `<div class="text-slate-500 break-words">original: ${esc(out.original)}</div>` +
-    out.results.map(r => `
-      <div class="border border-[#1f2a36] rounded p-1.5">
-        <div class="flex items-center gap-2">
-          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
-                style="background:${classColor(r.verdict.klass)}">${esc(r.verdict.klass)}</span>
-          <span class="text-[10px] text-slate-400">conf ${r.verdict.confidence.toFixed(2)}</span>
-          <span class="text-[10px] text-slate-500 ml-auto">${esc(r.name)}</span>
-        </div>
-        <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(r.text)}</div>
-      </div>`).join('');
-};
-
-// ---------- row label control ----------
-window.decorateRow = el => {
-  const row = JSON.parse(el.dataset.row);
-  const classes = Object.keys(row.verdict.probabilities);
-  const slot = el.querySelector('.row-actions');
-  slot.innerHTML = `
-    <span class="text-[10px] text-slate-500">I'd have said:</span>
-    <select class="label-class w-auto text-[10px] py-0 px-1">
-      ${classes.map(c => `<option ${c===row.verdict.klass?'selected':''}>${esc(c)}</option>`).join('')}
-    </select>
-    <button class="label-send btn-ghost text-[10px] py-0 px-1.5">label</button>`;
-  slot.className = 'row-actions mt-1 flex items-center gap-1';
-  slot.querySelector('.label-send').onclick = async () => {
-    const my = slot.querySelector('.label-class').value;
-    await fetch('/label', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({source: row.source, text: row.text,
-        previous_messages: row.previous_messages, brief_version: row.verdict.brief_version,
-        jev_class: row.verdict.klass, my_class: my})});
-    slot.innerHTML = `<span class="text-[10px] text-emerald-400">labelled: ${esc(my)}</span>`;
-  };
-};
+iEl['ig-stop'].onclick = async () => { await post('/instagram/stop', {}); igStatus('stopped'); };
 
 // ---------- SSE ----------
+function renderGlobal(stats) {
+  document.getElementById('global-cost').textContent =
+    `$${stats.cost_usd.toFixed(4)} / $${stats.max_cost_usd.toFixed(2)}`;
+  if (stats.paused) showBanner(
+    `Budget exceeded ($${stats.cost_usd.toFixed(2)} / $${stats.max_cost_usd.toFixed(2)}) — classification paused.`);
+  Object.entries(views).forEach(([s, v]) => v.renderStats(stats.sentinels[s]));
+}
+
 const events = new EventSource('/events');
 events.onmessage = e => {
   const msg = JSON.parse(e.data);
-  if (msg.type === 'message') addRow(msg.row);
-  else if (msg.type === 'stats') renderStats(msg.stats);
+  if (msg.type === 'message') views[msg.source]?.addRow(msg.row);
+  else if (msg.type === 'stats') renderGlobal(msg.stats);
   else if (msg.type === 'twitch') renderTwitch(msg.status, msg.channel);
-  else if (msg.type === 'banner') showBanner(msg.text);
   else if (msg.type === 'instagram') igStatus(`${msg.status} (${msg.sent}/${msg.total})`);
-  else if (msg.type === 'error') console.warn('classify error:', msg.detail);
-  else if (msg.type === 'brief') window.onBriefEvent && window.onBriefEvent(msg);
+  else if (msg.type === 'banner') showBanner(msg.text);
+  else if (msg.type === 'brief') views[msg.source]?.loadBrief(msg.brief, msg.version);
+  else if (msg.type === 'error') console.warn(`classify error [${msg.source}]:`, msg.detail);
 };
 
 // ---------- initial snapshot ----------
 fetch('/snapshot').then(r => r.json()).then(snap => {
-  renderStats(snap.stats);
+  renderGlobal(snap.stats);
   renderTwitch(snap.twitch.status, snap.twitch.channel);
-  if (snap.api_key_missing) showBanner('TYPESAFE_API_KEY missing in .env — messages flow but nothing is classified. Add the key and restart.');
-  presets = snap.presets;
-  const presetSel = document.getElementById('brief-preset');
-  const splitSel = document.getElementById('split-preset');
-  presetSel.innerHTML = splitSel.innerHTML = Object.entries(presets).map(([k, b]) =>
-    `<option value="${esc(k)}">${esc(b.name)}</option>`).join('');
-  loadBriefForm(snap.brief);
-  document.getElementById('brief-version').textContent = 'v' + snap.brief_version;
-  if (snap.split_key) {
-    document.getElementById('split-toggle').checked = true;
-    splitSel.value = snap.split_key;
-  }
-  if (snap.ig_graph_enabled) document.getElementById('ig-fetch').classList.remove('hidden');
-  window.onSnapshot && window.onSnapshot(snap);   // brief editor hook (step 3)
+  Object.entries(snap.briefs).forEach(([s, b]) => views[s].loadBrief(b.brief, b.version));
+  if (snap.api_key_missing)
+    showBanner('TYPESAFE_API_KEY missing in .env — messages flow but nothing is classified. Add the key and restart.');
+  if (!snap.ig_graph_enabled)
+    igStatus('no IG_ACCESS_TOKEN in .env — URL mode disabled, paste/upload still works');
 });
 </script>
 </body>

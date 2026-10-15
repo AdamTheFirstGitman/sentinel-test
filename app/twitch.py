@@ -11,7 +11,7 @@ from typing import Any
 
 import websockets
 
-from app.pipeline import Pipeline
+from app.pipeline import Hub
 
 IRC_URL = "wss://irc-ws.chat.twitch.tv:443"
 
@@ -58,8 +58,8 @@ def parse_privmsg(line: str) -> dict[str, Any] | None:
 
 
 class TwitchSource:
-    def __init__(self, pipeline: Pipeline) -> None:
-        self.pipeline = pipeline
+    def __init__(self, hub: Hub) -> None:
+        self.hub = hub
         self.channel: str | None = None
         self.status = "disconnected"
         self._task: asyncio.Task[None] | None = None
@@ -78,7 +78,7 @@ class TwitchSource:
 
     def _set_status(self, status: str) -> None:
         self.status = status
-        self.pipeline.broadcast({"type": "twitch", "status": status, "channel": self.channel})
+        self.hub.broadcast({"type": "twitch", "status": status, "channel": self.channel})
 
     async def _run(self) -> None:
         while self.channel:
@@ -101,7 +101,7 @@ class TwitchSource:
                             else:
                                 msg = parse_privmsg(line)
                                 if msg is not None:
-                                    self.pipeline.submit("twitch", msg["author"], msg["text"])
+                                    self.hub.sentinels["twitch"].submit(msg["author"], msg["text"])
             except asyncio.CancelledError:
                 raise
             except Exception:

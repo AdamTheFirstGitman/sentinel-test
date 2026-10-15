@@ -51,32 +51,40 @@ Available models: jev-latest, jev-preview
 Total: 4365 input tokens, $0.000183
 ```
 
-## Panels
+## Two sentinels
 
-**Left — sources & brief.**
-- *Twitch*: type a channel name, Join/Leave. Connects anonymously (`justinfan…`) over
-  IRC WebSocket, read-only, no key. Every chat message goes through the classifier.
-- *Instagram*: paste comments one per line (`author: text`, or bare text), or pick a
-  JSON/CSV export (`author,text`), set a rate (msgs/s) and Replay. If `IG_ACCESS_TOKEN`
-  and `IG_MEDIA_ID` are set in `.env`, a "Fetch via Graph API" button appears and
-  replays the post's real comments (paginated GET, never writes).
-- *Brief*: preset dropdown (FR streamer / EN gaming streamer / IG fitness creator),
-  editable creator context and topics (key / label / description / policy). **Apply
-  brief** bumps `brief_version` and rebuilds the Jev question: one `choice` question
-  with fixed classes `ok`, `noise`, `critique`, `hostile_other` plus one
-  `hostile_<key>` per topic whose policy isn't `tolerate`.
+Twitch and Instagram are **two fully independent sentinels**, each on its own tab:
+separate brief (own version counter), separate queue/workers/rate cap, separate feed
+and stats. They share only the Jev client and the global budget (top-right of the
+header). The default briefs are deliberately generic one-liners — add your own
+context and topics per source from the UI.
 
-**Centre — live feed.** Newest on top: time, author (+badges, "new" for first-msg),
-text, class pill, stacked probability bar, confidence / latency / cost / brief
-version. Filter chips: all, hostile only, grey zone (confidence < 0.6). The *split*
-toggle classifies every message under a second preset brief too and shows both
-verdicts. Each row has an "I'd have said" control that appends your disagreement to
+Each tab has the same three columns:
+
+**Left — source & brief.**
+- *Twitch tab*: type a channel name, Join/Leave. Connects anonymously (`justinfan…`)
+  over IRC WebSocket, read-only, no key. Every chat message goes through that
+  sentinel.
+- *Instagram tab*: paste a **post URL** and Load — with `IG_ACCESS_TOKEN` in `.env`,
+  the post is resolved against the connected account's own media and its comments are
+  fetched (paginated GET, never writes) then replayed at the chosen rate. Without a
+  token, the fold-out paste/upload mode still works: one comment per line
+  (`author: text`, or bare text) or a JSON/CSV export (`author,text`).
+- *Brief*: editable creator context and topics (key / label / description / policy),
+  per source. **Apply brief** bumps that sentinel's `brief_version` and rebuilds its
+  Jev question: one `choice` question with fixed classes `ok`, `noise`, `critique`,
+  `hostile_other` plus one `hostile_<key>` per topic whose policy isn't `tolerate`.
+
+**Centre — live feed** (per source). Newest on top: time, author (+badges, "new" for
+first-msg), text, class pill, stacked probability bar, confidence / latency / cost /
+brief version. Filter chips: all, hostile only, grey zone (confidence < 0.6). Each
+row has an "I'd have said" control that appends your disagreement to
 `data/labels.jsonl`.
 
-**Right — stats & tools.** Live msgs/min, classified/dropped counts, queue depth,
-class distribution, latency p50/p95, cumulative cost vs `MAX_COST_USD`, brief
-version. The perturbation tool re-classifies the last (or a typed) message under
-leetspeak, homoglyphs, spaced letters and trailing emojis.
+**Right — stats & tools** (per source). Live msgs/min, classified/dropped counts,
+queue depth, class distribution, latency p50/p95, brief version. The perturbation
+tool re-classifies that sentinel's last (or a typed) message under leetspeak,
+homoglyphs, spaced letters and trailing emojis.
 
 ## Budget & safety
 
@@ -89,12 +97,13 @@ leetspeak, homoglyphs, spaced letters and trailing emojis.
 
 ## Known limits
 
-- Everything is in memory: restart loses stats, feed, brief edits and budget state.
+- Everything is in memory: restart loses stats, feeds, brief edits and budget state.
 - `.env` is read at startup only — adding the key or changing `MAX_COST_USD` needs a
   restart (uvicorn `--reload` does not watch `.env`).
 - One Twitch channel at a time; joining another leaves the first.
-- Split mode doubles cost per message (two full API calls, both metered).
-- The feed keeps the last 200 rows; the latency percentiles use the last 500 calls.
+- Instagram URL mode only finds posts of the **connected account** (it matches the
+  URL against `/me/media` permalinks — the Graph API cannot read arbitrary posts).
+- Each feed keeps the last 200 rows; latency percentiles use the last 500 calls.
 - Plain JS + SSE instead of HTMX: fewer moving parts for JSON-driven rows.
 - The brief editor trusts you: empty keys/descriptions are silently dropped, no
   validation beyond that.
