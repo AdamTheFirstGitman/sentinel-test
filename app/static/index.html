@@ -18,8 +18,8 @@
   .chip.active { background:#2563eb; color:white; }
   .tab { font-size:0.8rem; font-weight:700; padding:0.3rem 1rem; border-radius:0.375rem;
     color:#9fb0c0; cursor:pointer; }
-  .tab.active-twitch { background:#7c3aed; color:white; }
-  .tab.active-instagram { background:#db2777; color:white; }
+  .tab.active-twitch { background:#9146ff; color:white; }
+  .tab.active-instagram { background:#e1306c; color:white; }
 </style>
 </head>
 <body class="h-screen overflow-hidden text-sm flex flex-col">
@@ -44,9 +44,9 @@
     <div class="flex flex-col gap-3 overflow-y-auto pr-1">
       <div class="panel p-3" data-slot="source"></div>
 
-      <div class="panel p-3">
+      <div class="panel p-3" data-el="brief-panel">
         <div class="flex items-center justify-between mb-2">
-          <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400">Brief</h2>
+          <h2 data-el="brief-title" class="font-bold text-xs uppercase tracking-wide">Brief</h2>
           <span data-el="brief-version" class="text-[10px] text-slate-500 font-mono">v1</span>
         </div>
         <textarea data-el="brief-context" rows="4" class="mb-2" placeholder="creator context"></textarea>
@@ -82,7 +82,7 @@
       </div>
       <div class="panel p-3">
         <h2 class="font-bold text-xs uppercase tracking-wide text-slate-400 mb-2">Perturbations</h2>
-        <input data-el="perturb-text" placeholder="(empty = last message)" class="mb-2">
+        <input data-el="perturb-text" placeholder="message to test (empty = last message of this source)" class="mb-2">
         <button data-el="perturb-btn" class="btn-primary w-full">Replay with perturbations</button>
         <div data-el="perturb-results" class="mt-2 flex flex-col gap-1 text-xs"></div>
       </div>
@@ -162,10 +162,13 @@ function verdictBlock(v) {
 }
 
 // ---------- one view per source ----------
+const ACCENTS = { twitch: '#9146ff', instagram: '#e1306c' };  // brand-ish colours
+
 class View {
   constructor(source) {
     this.source = source;
     this.filter = 'all';
+    this.accent = ACCENTS[source];
     this.root = document.getElementById('view-template').content.firstElementChild.cloneNode(true);
     this.root.id = `view-${source}`;
     this.root.querySelector('[data-slot="source"]').append(
@@ -173,6 +176,11 @@ class View {
     document.getElementById('views').append(this.root);
     this.el = {};
     this.root.querySelectorAll('[data-el]').forEach(n => this.el[n.dataset.el] = n);
+    // Make each source's brief unmistakable: accent border, named title, accent button.
+    this.el['brief-panel'].style.borderLeft = `3px solid ${this.accent}`;
+    this.el['brief-title'].textContent = `Brief — ${source}`;
+    this.el['brief-title'].style.color = this.accent;
+    this.el['apply-brief'].style.background = this.accent;
     this.wireBrief();
     this.wirePerturb();
     this.wireFilters();
