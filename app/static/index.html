@@ -50,6 +50,11 @@
           <span data-el="brief-version" class="text-[10px] text-slate-500 font-mono">v1</span>
         </div>
         <textarea data-el="brief-context" rows="4" class="mb-2" placeholder="creator context"></textarea>
+        <div class="text-[10px] text-slate-500 mb-1">
+          Topics are your declared sensitive subjects. Jev matches the <b>description</b>;
+          the <b>key</b> names the class (<span class="font-mono">hostile_&lt;key&gt;</span>);
+          <b>tolerate</b> topics add no class.
+        </div>
         <div data-el="topics" class="flex flex-col gap-2 mb-2"></div>
         <div class="flex gap-2">
           <button data-el="add-topic" class="btn-ghost flex-1">+ topic</button>
@@ -135,6 +140,7 @@ function classColor(klass) {
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const normKey = s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 const MAX_ROWS = 200;
 const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
                                         body: JSON.stringify(body)}).then(r => r.json());
@@ -246,20 +252,42 @@ class View {
 
   // -- brief editor --
   topicRow(t = {key:'', label:'', description:'', policy:'remove'}) {
+    const POLICIES = {
+      remove:   'remove — hostile class, cut it',
+      hold:     'hold — hostile class, review it',
+      tolerate: 'tolerate — allowed, no hostile class',
+    };
     const row = document.createElement('div');
     row.className = 'topic-row border border-[#1f2a36] rounded p-2 flex flex-col gap-1';
     row.innerHTML = `
       <div class="flex gap-1">
-        <input class="t-key" placeholder="key" value="${esc(t.key)}" style="width:35%">
-        <input class="t-label" placeholder="label" value="${esc(t.label)}">
+        <input class="t-key" placeholder="key (short id)" value="${esc(t.key)}" style="width:35%"
+               title="short id — becomes the class hostile_<key>">
+        <input class="t-label" placeholder="label (for you only)" value="${esc(t.label)}"
+               title="display name, not used for classification">
         <button class="t-del btn-ghost shrink-0 px-2">×</button>
       </div>
-      <textarea class="t-desc" rows="2" placeholder="description">${esc(t.description)}</textarea>
-      <select class="t-policy">
-        ${['remove','hold','tolerate'].map(p =>
-          `<option ${p===t.policy?'selected':''}>${p}</option>`).join('')}
+      <div class="t-hint text-[10px] font-mono text-slate-500"></div>
+      <textarea class="t-desc" rows="2"
+        placeholder="description — what counts as a hit; this is the text Jev matches against"
+        title="the criterion Jev reads for this class">${esc(t.description)}</textarea>
+      <select class="t-policy" title="tolerate topics add no hostile class">
+        ${Object.entries(POLICIES).map(([p, txt]) =>
+          `<option value="${p}" ${p===t.policy?'selected':''}>${txt}</option>`).join('')}
       </select>`;
     row.querySelector('.t-del').onclick = () => row.remove();
+    const keyInput = row.querySelector('.t-key');
+    const policySel = row.querySelector('.t-policy');
+    const hint = row.querySelector('.t-hint');
+    const updateHint = () => {
+      const k = normKey(keyInput.value);
+      hint.textContent = !k ? ''
+        : policySel.value === 'tolerate' ? `${k} → tolerated, adds no class`
+        : `→ adds class hostile_${k}`;
+      hint.style.color = policySel.value === 'tolerate' ? '' : classColor('hostile_' + k);
+    };
+    keyInput.oninput = policySel.onchange = updateHint;
+    updateHint();
     return row;
   }
 
@@ -274,7 +302,7 @@ class View {
     this.el['add-topic'].onclick = () => this.el.topics.appendChild(this.topicRow());
     this.el['apply-brief'].onclick = async () => {
       const topics = [...this.el.topics.querySelectorAll('.topic-row')].map(row => ({
-        key: row.querySelector('.t-key').value.trim(),
+        key: normKey(row.querySelector('.t-key').value),
         label: row.querySelector('.t-label').value.trim(),
         description: row.querySelector('.t-desc').value.trim(),
         policy: row.querySelector('.t-policy').value,
