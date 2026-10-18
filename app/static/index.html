@@ -158,11 +158,14 @@ function probBar(probs) {
   return `<div class="flex h-1.5 rounded overflow-hidden bg-[#1f2a36] mt-1">${segs.join('')}</div>`;
 }
 
+const CONF_HELP = 'confidence = how concentrated the probabilities are, not the top '
+  + 'class’s probability: one clear peak → high, several close options → low';
+
 function verdictBlock(v) {
   return `<div class="flex items-center gap-2">
     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
           style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
-    <span class="text-[10px] text-slate-400">conf ${v.confidence.toFixed(2)}</span>
+    <span class="text-[10px] text-slate-400" title="${CONF_HELP}">conf ${v.confidence.toFixed(2)}</span>
     <span class="text-[10px] text-slate-500">${v.latency_ms}ms · $${v.cost_usd.toFixed(6)} · v${v.brief_version}</span>
   </div>${probBar(v.probabilities)}`;
 }
@@ -324,7 +327,7 @@ class View {
         <div class="flex items-center gap-2">
           <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
                 style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
-          <span class="text-[10px] text-slate-400">conf ${v.confidence.toFixed(2)}</span>
+          <span class="text-[10px] text-slate-400" title="${CONF_HELP}">conf ${v.confidence.toFixed(2)}</span>
           <span class="text-[10px] ${baseline ? 'text-slate-300 font-bold' : 'text-slate-500'} ml-auto">${esc(name)}</span>
         </div>
         <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(text)}</div>
