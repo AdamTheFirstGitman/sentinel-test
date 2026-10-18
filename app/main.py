@@ -168,13 +168,16 @@ async def perturb(req: PerturbRequest) -> dict:
         return {"ok": False, "error": "no message to perturb yet"}
     results = []
     try:
+        # Empty previous_messages: a fixed state, so runs compare perturbation effects
+        # (and the model's own noise), not whatever the chat context happened to be.
+        baseline = await sentinel.classify_adhoc(text, previous=[])
         for name, fn in PERTURBATIONS.items():
             variant = fn(text)
-            verdict = await sentinel.classify_adhoc(variant)
+            verdict = await sentinel.classify_adhoc(variant, previous=[])
             results.append({"name": name, "text": variant, "verdict": verdict})
     except RuntimeError as exc:  # budget pause
         return {"ok": False, "error": str(exc)}
-    return {"ok": True, "original": text, "results": results}
+    return {"ok": True, "original": text, "baseline": baseline, "results": results}
 
 
 class LabelRequest(BaseModel):

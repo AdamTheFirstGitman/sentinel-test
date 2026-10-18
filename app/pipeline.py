@@ -89,15 +89,19 @@ class Sentinel:
                 self.hub.broadcast({"type": "error", "source": self.source,
                                     "detail": type(exc).__name__ + ": " + str(exc)[:300]})
 
-    async def classify_adhoc(self, text: str) -> dict[str, Any]:
-        """Direct classification (perturbation tool). Counts cost/budget, not classes."""
+    async def classify_adhoc(self, text: str, previous: list[str] | None = None) -> dict[str, Any]:
+        """Direct classification (perturbation tool). Counts cost/budget, not classes.
+
+        `previous=[]` gives a fixed, context-free state so repeated runs are comparable;
+        None uses the sentinel's live context.
+        """
         assert self.hub.client is not None
         if self.hub.paused:
             raise RuntimeError("budget exceeded — classification paused")
         verdict = await classify(
             self.hub.client, message=text,
             author={"name": "perturbation-tool", "is_new_to_stream": False, "badges": []},
-            previous_messages=list(self.previous),
+            previous_messages=list(self.previous) if previous is None else previous,
             brief=self.brief, brief_version=self.brief_version, question=self.question,
         )
         self._account(verdict, count_class=False)

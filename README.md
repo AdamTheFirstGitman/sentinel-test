@@ -83,8 +83,11 @@ row has an "I'd have said" control that appends your disagreement to
 
 **Right — stats & tools** (per source). Live msgs/min, classified/dropped counts,
 queue depth, class distribution, latency p50/p95, brief version. The perturbation
-tool re-classifies that sentinel's last (or a typed) message under leetspeak,
-homoglyphs, spaced letters and trailing emojis.
+tool classifies that sentinel's last (or a typed) message as a baseline, plus 4
+deterministic variants (leetspeak, homoglyphs, spaced letters, trailing emojis) —
+5 API calls. Each card shows the full per-class probability breakdown, not just the
+winner. Perturbation runs use an empty chat context so they are comparable; the
+remaining run-to-run variation is the model's own stochasticity.
 
 ## Budget & safety
 
@@ -107,6 +110,9 @@ homoglyphs, spaced letters and trailing emojis.
 - Plain JS + SSE instead of HTMX: fewer moving parts for JSON-driven rows.
 - The brief editor trusts you: empty keys/descriptions are silently dropped, no
   validation beyond that.
+- Jev is not deterministic: identical requests move per-class probabilities by
+  roughly ±5 points, enough to flip the displayed label when two classes are
+  near-tied (that's what the grey-zone filter is for).
 
 ## Findings
 
@@ -115,3 +121,8 @@ _(to be filled in by hand while using the bench)_
 - Early observation from the perturbation tool: heavy leetspeak/homoglyphs keep the
   right class but drop confidence into the grey zone (~0.6), and spacing letters out
   can flip between two applicable hostile topics.
+- Measured (4 identical calls on a borderline dogwhistle, 2026-10-18): probabilities
+  vary ±5 points run to run, e.g. ok 0.49–0.59 vs hostile 0.39–0.49 on the same
+  input — the label is a coin flip there. Implicit references the model has to
+  "get" (e.g. naming a person as an insinuation) sit near 50/50; explicit tropes
+  land solidly in the topic class.

@@ -314,23 +314,36 @@ class View {
   }
 
   // -- perturbation tool --
+  perturbCard(name, text, v, baseline = false) {
+    const probs = Object.entries(v.probabilities).sort((a,b)=>b[1]-a[1]);
+    const probList = probs.filter(([,p]) => p >= 0.005).slice(0, 4).map(([k, p]) =>
+      `<span class="whitespace-nowrap"><span style="color:${classColor(k)}">●</span> ${esc(k)} <b>${(p*100).toFixed(0)}%</b></span>`
+    ).join(' ');
+    return `
+      <div class="border ${baseline ? 'border-slate-500' : 'border-[#1f2a36]'} rounded p-1.5">
+        <div class="flex items-center gap-2">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
+          <span class="text-[10px] text-slate-400">conf ${v.confidence.toFixed(2)}</span>
+          <span class="text-[10px] ${baseline ? 'text-slate-300 font-bold' : 'text-slate-500'} ml-auto">${esc(name)}</span>
+        </div>
+        <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(text)}</div>
+        ${probBar(v.probabilities)}
+        <div class="flex flex-wrap gap-x-2 text-[10px] text-slate-400 mt-1">${probList}</div>
+      </div>`;
+  }
+
   wirePerturb() {
     this.el['perturb-btn'].onclick = async () => {
       const box = this.el['perturb-results'];
-      box.innerHTML = '<span class="text-slate-500">classifying 4 variants…</span>';
+      box.innerHTML = '<span class="text-slate-500">classifying baseline + 4 variants…</span>';
       const out = await post('/perturb', {source: this.source, text: this.el['perturb-text'].value});
       if (!out.ok) { box.innerHTML = `<span class="text-red-400">${esc(out.error)}</span>`; return; }
-      box.innerHTML = `<div class="text-slate-500 break-words">original: ${esc(out.original)}</div>` +
-        out.results.map(r => `
-          <div class="border border-[#1f2a36] rounded p-1.5">
-            <div class="flex items-center gap-2">
-              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
-                    style="background:${classColor(r.verdict.klass)}">${esc(r.verdict.klass)}</span>
-              <span class="text-[10px] text-slate-400">conf ${r.verdict.confidence.toFixed(2)}</span>
-              <span class="text-[10px] text-slate-500 ml-auto">${esc(r.name)}</span>
-            </div>
-            <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(r.text)}</div>
-          </div>`).join('');
+      box.innerHTML =
+        this.perturbCard('original (baseline)', out.original, out.baseline, true) +
+        out.results.map(r => this.perturbCard(r.name, r.text, r.verdict)).join('') +
+        `<div class="text-[10px] text-slate-600">classified with empty chat context for
+         comparability — the model itself is slightly stochastic (± a few points per run)</div>`;
     };
   }
 

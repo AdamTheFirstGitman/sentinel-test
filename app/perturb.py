@@ -1,6 +1,9 @@
-"""Text normalisation (for the `normalized` state field) and the 4 perturbation generators."""
+"""Text normalisation (for the `normalized` state field) and the 4 perturbation generators.
 
-import random
+The generators are deterministic so perturbation runs are comparable; the remaining
+run-to-run variance is the model's own stochasticity.
+"""
+
 import unicodedata
 
 # Common leet digits/symbols and lookalike letters, mapped back to ASCII.
@@ -44,8 +47,7 @@ def spaced_letters(text: str) -> str:
 
 
 def trailing_emojis(text: str) -> str:
-    tail = "".join(random.sample(["😂", "💀", "🔥", "🤡", "😭", "👀"], 3))
-    return f"{text} {tail}"
+    return f"{text} 😂💀🔥"
 
 
 PERTURBATIONS = {
