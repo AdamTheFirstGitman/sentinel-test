@@ -9,11 +9,11 @@ import time
 from collections import Counter, deque
 from typing import Any
 
-from typesafe_sdk import AsyncTypeSafeClient, Choice
+from typesafe_sdk import AsyncTypeSafeClient
 
 from app import config
 from app.brief import DEFAULT_BRIEFS, Brief
-from app.jev import Verdict, build_question, classify
+from app.jev import Verdict, build_questions, classify
 
 SOURCES = ("twitch", "instagram")
 
@@ -26,7 +26,8 @@ class Sentinel:
         self.hub = hub
         self.brief: Brief = DEFAULT_BRIEFS[source].model_copy(deep=True)
         self.brief_version = 1
-        self.question: Choice = build_question(self.brief)
+        self.mode = "choice"  # "choice" | "nouls"
+        self.questions = build_questions(self.brief, self.mode)
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=200)
         self.previous: deque[str] = deque(maxlen=5)
         self.last_text: str | None = None
@@ -79,7 +80,7 @@ class Sentinel:
                     self.hub.client, message=msg["text"], author=msg["author"],
                     previous_messages=msg["previous_messages"],
                     brief=self.brief, brief_version=self.brief_version,
-                    question=self.question,
+                    questions=self.questions, mode=self.mode,
                 )
                 self._account(verdict)
                 self.hub.broadcast({"type": "message", "source": self.source,
@@ -102,7 +103,8 @@ class Sentinel:
             self.hub.client, message=text,
             author={"name": "perturbation-tool", "is_new_to_stream": False, "badges": []},
             previous_messages=list(self.previous) if previous is None else previous,
-            brief=self.brief, brief_version=self.brief_version, question=self.question,
+            brief=self.brief, brief_version=self.brief_version,
+            questions=self.questions, mode=self.mode,
         )
         self._account(verdict, count_class=False)
         return verdict.model_dump()
@@ -119,10 +121,15 @@ class Sentinel:
     def apply_brief(self, brief: Brief) -> int:
         self.brief = brief
         self.brief_version += 1
-        self.question = build_question(brief)
+        self.questions = build_questions(brief, self.mode)
         self.hub.broadcast({"type": "brief", "source": self.source,
                             "version": self.brief_version, "brief": brief.model_dump()})
         return self.brief_version
+
+    def set_mode(self, mode: str) -> None:
+        self.mode = mode
+        self.questions = build_questions(self.brief, mode)
+        self.hub.broadcast({"type": "mode", "source": self.source, "mode": mode})
 
     # -- stats ---------------------------------------------------------------
 

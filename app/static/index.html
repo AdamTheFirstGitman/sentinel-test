@@ -70,6 +70,12 @@
         <span class="chip active" data-filter="all">all</span>
         <span class="chip" data-filter="hostile">hostile only</span>
         <span class="chip" data-filter="grey">grey zone &lt;0.6</span>
+        <span class="flex-1"></span>
+        <select data-el="mode" class="w-auto text-xs py-0.5"
+                title="choice: one exclusive class per message, probabilities sum to 1.&#10;multi-label: an independent 0-1 score per label (several can fire at once); class shown = top label ≥ 0.5, else ok.">
+          <option value="choice">choice — one class</option>
+          <option value="nouls">multi-label — score per label</option>
+        </select>
       </div>
       <div data-el="feed" class="flex-1 overflow-y-auto divide-y divide-[#17202b]"></div>
     </div>
@@ -158,6 +164,22 @@ function probBar(probs) {
   return `<div class="flex h-1.5 rounded overflow-hidden bg-[#1f2a36] mt-1">${segs.join('')}</div>`;
 }
 
+// nouls mode: independent scores — one bar per label instead of a shared stacked bar.
+function noulBars(scores) {
+  return Object.entries(scores).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `
+    <div class="flex items-center gap-1 mt-0.5">
+      <span class="text-[9px] w-24 truncate text-right" style="color:${classColor(k)}">${esc(k)}</span>
+      <div class="flex-1 h-1.5 rounded bg-[#1f2a36]">
+        <div class="h-1.5 rounded" style="width:${v*100}%;background:${classColor(k)}"></div>
+      </div>
+      <span class="text-[9px] text-slate-400 w-7 text-right">${(v*100).toFixed(0)}%</span>
+    </div>`).join('');
+}
+
+const scoreBlock = v => v.mode === 'nouls' ? noulBars(v.probabilities) : probBar(v.probabilities);
+const confBadge = v => v.confidence == null ? ''
+  : `<span class="text-[10px] text-slate-400" title="${CONF_HELP}">conf ${v.confidence.toFixed(2)}</span>`;
+
 const CONF_HELP = 'confidence = how concentrated the probabilities are, not the top '
   + 'class’s probability: one clear peak → high, several close options → low';
 
@@ -165,9 +187,9 @@ function verdictBlock(v) {
   return `<div class="flex items-center gap-2">
     <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
           style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
-    <span class="text-[10px] text-slate-400" title="${CONF_HELP}">conf ${v.confidence.toFixed(2)}</span>
+    ${confBadge(v)}
     <span class="text-[10px] text-slate-500">${v.latency_ms}ms · $${v.cost_usd.toFixed(6)} · v${v.brief_version}</span>
-  </div>${probBar(v.probabilities)}`;
+  </div>${scoreBlock(v)}`;
 }
 
 // ---------- one view per source ----------
@@ -193,12 +215,20 @@ class View {
     this.wireBrief();
     this.wirePerturb();
     this.wireFilters();
+    this.el.mode.onchange = () => post('/mode', {source: this.source, mode: this.el.mode.value});
   }
 
   // -- feed --
   rowMatches(row) {
-    if (this.filter === 'hostile') return row.verdict.klass.startsWith('hostile');
-    if (this.filter === 'grey') return row.verdict.confidence < 0.6;
+    const v = row.verdict;
+    if (this.filter === 'hostile') return v.klass.startsWith('hostile');
+    if (this.filter === 'grey') {
+      if (v.mode === 'nouls') {  // ambiguous = top label neither clearly off nor clearly on
+        const top = Math.max(...Object.values(v.probabilities));
+        return top >= 0.3 && top < 0.6;
+      }
+      return v.confidence < 0.6;
+    }
     return true;
   }
 
@@ -226,6 +256,7 @@ class View {
 
   decorateRow(el, row) {
     const classes = Object.keys(row.verdict.probabilities);
+    if (!classes.includes('ok')) classes.unshift('ok');  // nouls mode has no "ok" question
     const slot = el.querySelector('.row-actions');
     slot.innerHTML = `
       <span class="text-[10px] text-slate-500">I'd have said:</span>
@@ -319,20 +350,22 @@ class View {
   // -- perturbation tool --
   perturbCard(name, text, v, baseline = false) {
     const probs = Object.entries(v.probabilities).sort((a,b)=>b[1]-a[1]);
-    const probList = probs.filter(([,p]) => p >= 0.005).slice(0, 4).map(([k, p]) =>
-      `<span class="whitespace-nowrap"><span style="color:${classColor(k)}">●</span> ${esc(k)} <b>${(p*100).toFixed(0)}%</b></span>`
-    ).join(' ');
+    const probList = v.mode === 'nouls' ? '' :
+      `<div class="flex flex-wrap gap-x-2 text-[10px] text-slate-400 mt-1">` +
+      probs.filter(([,p]) => p >= 0.005).slice(0, 4).map(([k, p]) =>
+        `<span class="whitespace-nowrap"><span style="color:${classColor(k)}">●</span> ${esc(k)} <b>${(p*100).toFixed(0)}%</b></span>`
+      ).join(' ') + `</div>`;
     return `
       <div class="border ${baseline ? 'border-slate-500' : 'border-[#1f2a36]'} rounded p-1.5">
         <div class="flex items-center gap-2">
           <span class="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
                 style="background:${classColor(v.klass)}">${esc(v.klass)}</span>
-          <span class="text-[10px] text-slate-400" title="${CONF_HELP}">conf ${v.confidence.toFixed(2)}</span>
+          ${confBadge(v)}
           <span class="text-[10px] ${baseline ? 'text-slate-300 font-bold' : 'text-slate-500'} ml-auto">${esc(name)}</span>
         </div>
         <div class="text-[10px] text-slate-400 break-words mt-0.5">${esc(text)}</div>
-        ${probBar(v.probabilities)}
-        <div class="flex flex-wrap gap-x-2 text-[10px] text-slate-400 mt-1">${probList}</div>
+        ${scoreBlock(v)}
+        ${probList}
       </div>`;
   }
 
@@ -441,6 +474,7 @@ events.onmessage = e => {
   else if (msg.type === 'instagram') igStatus(`${msg.status} (${msg.sent}/${msg.total})`);
   else if (msg.type === 'banner') showBanner(msg.text);
   else if (msg.type === 'brief') views[msg.source]?.loadBrief(msg.brief, msg.version);
+  else if (msg.type === 'mode') views[msg.source].el.mode.value = msg.mode;
   else if (msg.type === 'error') console.warn(`classify error [${msg.source}]:`, msg.detail);
 };
 
@@ -448,7 +482,10 @@ events.onmessage = e => {
 fetch('/snapshot').then(r => r.json()).then(snap => {
   renderGlobal(snap.stats);
   renderTwitch(snap.twitch.status, snap.twitch.channel);
-  Object.entries(snap.briefs).forEach(([s, b]) => views[s].loadBrief(b.brief, b.version));
+  Object.entries(snap.briefs).forEach(([s, b]) => {
+    views[s].loadBrief(b.brief, b.version);
+    views[s].el.mode.value = b.mode;
+  });
   if (snap.api_key_missing)
     showBanner('TYPESAFE_API_KEY missing in .env — messages flow but nothing is classified. Add the key and restart.');
   if (!snap.ig_graph_enabled)

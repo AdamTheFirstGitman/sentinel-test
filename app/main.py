@@ -45,7 +45,8 @@ async def index() -> FileResponse:
 async def snapshot() -> dict:
     return {
         "stats": hub.stats(),
-        "briefs": {source: {"brief": s.brief.model_dump(), "version": s.brief_version}
+        "briefs": {source: {"brief": s.brief.model_dump(), "version": s.brief_version,
+                            "mode": s.mode}
                    for source, s in hub.sentinels.items()},
         "twitch": {"status": twitch.status, "channel": twitch.channel},
         "ig_graph_enabled": config.IG_GRAPH_ENABLED,
@@ -151,6 +152,19 @@ async def brief_apply(req: BriefRequest) -> dict:
     version = hub.sentinels[req.source].apply_brief(
         Brief(name=req.name, creator_context=req.creator_context, topics=req.topics))
     return {"ok": True, "brief_version": version}
+
+
+class ModeRequest(BaseModel):
+    source: str
+    mode: str  # "choice" | "nouls"
+
+
+@app.post("/mode")
+async def set_mode(req: ModeRequest) -> dict:
+    if req.source not in SOURCES or req.mode not in ("choice", "nouls"):
+        return {"ok": False, "error": "unknown source or mode"}
+    hub.sentinels[req.source].set_mode(req.mode)
+    return {"ok": True, "mode": req.mode}
 
 
 class PerturbRequest(BaseModel):

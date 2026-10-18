@@ -72,8 +72,19 @@ Each tab has the same three columns:
   (`author: text`, or bare text) or a JSON/CSV export (`author,text`).
 - *Brief*: editable creator context and topics (key / label / description / policy),
   per source. **Apply brief** bumps that sentinel's `brief_version` and rebuilds its
-  Jev question: one `choice` question with fixed classes `ok`, `noise`, `critique`,
-  `hostile_other` plus one `hostile_<key>` per topic whose policy isn't `tolerate`.
+  Jev questions.
+
+**Classification modes** (selector in the feed header, per sentinel; one API call
+per message either way, same cost):
+- *choice — one class*: a single `choice` question with the fixed classes `ok`,
+  `noise`, `critique`, `hostile_other` plus one `hostile_<key>` per non-tolerated
+  topic. Classes are mutually exclusive (probabilities sum to 1) and come with a
+  `confidence` score. Right when you want one decision per message.
+- *multi-label — score per label*: one independent `noul` (yes/no) question per
+  label in the same call. Each label gets an absolute 0–1 score; several can fire
+  at once and ambiguity reads as "everything low" instead of a flat distribution.
+  The displayed class is the top label when it reaches 0.5, else `ok`; there is no
+  confidence score. Grey-zone filter = top score in [0.3, 0.6).
 
 **Centre — live feed** (per source). Newest on top: time, author (+badges, "new" for
 first-msg), text, class pill, stacked probability bar, confidence / latency / cost /

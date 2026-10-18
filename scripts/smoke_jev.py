@@ -71,7 +71,7 @@ async def main() -> None:
                 previous_messages=list(previous),
                 brief=DEMO_BRIEF,
                 brief_version=1,
-                question=question,
+                questions={"klass": question},
             )
             previous.append(msg["text"])
             total_tokens += verdict.input_tokens
