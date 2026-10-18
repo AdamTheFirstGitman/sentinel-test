@@ -1,9 +1,10 @@
 """Text normalisation (for the `normalized` state field) and the 4 perturbation generators.
 
-The generators are deterministic so perturbation runs are comparable; the remaining
-run-to-run variance is the model's own stochasticity.
+The text generators are deterministic so runs are comparable. trailing_emojis is
+deliberately random: emoji choice measurably shifts the model, and sampling probes that.
 """
 
+import random
 import unicodedata
 
 # Common leet digits/symbols and lookalike letters, mapped back to ASCII.
@@ -47,7 +48,8 @@ def spaced_letters(text: str) -> str:
 
 
 def trailing_emojis(text: str) -> str:
-    return f"{text} 😂💀🔥"
+    tail = "".join(random.sample(["😂", "💀", "🔥", "🤡", "😭", "👀"], 3))
+    return f"{text} {tail}"
 
 
 PERTURBATIONS = {

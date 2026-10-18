@@ -343,7 +343,8 @@ class View {
         this.perturbCard('original (baseline)', out.original, out.baseline, true) +
         out.results.map(r => this.perturbCard(r.name, r.text, r.verdict)).join('') +
         `<div class="text-[10px] text-slate-600">classified with empty chat context for
-         comparability — the model itself is slightly stochastic (± a few points per run)</div>`;
+         comparability — the model itself is slightly stochastic (± a few points per run),
+         and the emoji tail is re-sampled on purpose each run</div>`;
     };
   }
 

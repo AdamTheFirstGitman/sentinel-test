@@ -84,10 +84,11 @@ row has an "I'd have said" control that appends your disagreement to
 **Right — stats & tools** (per source). Live msgs/min, classified/dropped counts,
 queue depth, class distribution, latency p50/p95, brief version. The perturbation
 tool classifies that sentinel's last (or a typed) message as a baseline, plus 4
-deterministic variants (leetspeak, homoglyphs, spaced letters, trailing emojis) —
-5 API calls. Each card shows the full per-class probability breakdown, not just the
-winner. Perturbation runs use an empty chat context so they are comparable; the
-remaining run-to-run variation is the model's own stochasticity.
+variants — leetspeak, homoglyphs and spaced letters are deterministic; the trailing
+emoji tail is deliberately re-sampled each run, since emoji choice measurably shifts
+the model — 5 API calls. Each card shows the full per-class probability breakdown,
+not just the winner. Perturbation runs use an empty chat context so they are
+comparable; the remaining run-to-run variation is the model's own stochasticity.
 
 ## Budget & safety
 
