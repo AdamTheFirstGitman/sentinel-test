@@ -126,15 +126,56 @@ comparable; the remaining run-to-run variation is the model's own stochasticity.
   roughly ±5 points, enough to flip the displayed label when two classes are
   near-tied (that's what the grey-zone filter is for).
 
-## Findings
+## Findings (prototype test report, 2026-10-14 → 2026-10-20)
 
-_(to be filled in by hand while using the bench)_
+**Latency.** Consistently around a quarter second per classification: p50 ≈ 275 ms,
+p95 ≈ 420 ms measured on live Twitch traffic; single calls 247–274 ms in the smoke
+run. Stable across briefs, modes and message sizes tried (~550–900 input tokens).
 
-- Early observation from the perturbation tool: heavy leetspeak/homoglyphs keep the
-  right class but drop confidence into the grey zone (~0.6), and spacing letters out
-  can flip between two applicable hostile topics.
-- Measured (4 identical calls on a borderline dogwhistle, 2026-10-18): probabilities
-  vary ±5 points run to run, e.g. ok 0.49–0.59 vs hostile 0.39–0.49 on the same
-  input — the label is a coin flip there. Implicit references the model has to
-  "get" (e.g. naming a person as an insinuation) sit near 50/50; explicit tropes
-  land solidly in the topic class.
+**Probability calibration.** Good at the extremes, honest in the middle:
+- ≥ 0.9 was always genuinely clean in our tests (hostile_breakup 1.00,
+  hostile_body 0.98 on leetspeak, hostile_other 1.00 on the non-topical control,
+  hostile_propal 0.93 on a dogwhistle once the criterion was structured).
+- Mid-range (0.4–0.6) is real ambiguity, not noise-free signal: implicit
+  references the model has to "get" (insinuation by association) sit near 50/50.
+- Caveat 1: the model is stochastic — identical calls move per-class probabilities
+  by ±5 points (ok 0.49–0.59 on the same input), so inside the grey zone the
+  displayed label is effectively a coin flip. Treat conf < 0.6 as "review", never
+  as a decision.
+- Caveat 2: calibration is relative to the brief. The same message went
+  hostile_propal 0.07 → 0.93 when the flat criterion text was replaced by a
+  structured rubric ({what, not_for, examples, subtopics}) — the criterion wording
+  dominates everything else.
+
+**Split mode.** Dropped mid-test when the bench was restructured into two
+independent sentinels (one per source, own brief); its question is now answered by
+applying different briefs per sentinel and by the choice/multi-label mode toggle.
+What remains verified: applying a brief rebuilds the question immediately
+(brief_version bump), and the same message classifies differently under two briefs
+as expected.
+
+**Perturbations (leet & friends).**
+- Leetspeak/homoglyphs usually keep the right class but push confidence into the
+  grey zone (~0.5–0.66); the `normalized` state field (NFKC + leet fold) is doing
+  real work here.
+- Spaced letters can flip between two applicable hostile classes.
+- Trailing emojis matter more than expected: mockery tails (💀😂🤡) shifted a
+  borderline message by tens of points across runs — tone is part of the signal.
+- Obfuscation itself is sometimes read as suspicious: leet/spaced variants of a
+  borderline dogwhistle scored *more* hostile than the plain text.
+
+**Knowledge gaps.** Jev lags on recent/implicit references (e.g. current
+dogwhistles by association): near 50/50 out of the box. Mitigation measured in the
+prototype: structured criteria with examples (0.07 → 0.93 on the association case);
+for the full version, fill via curated examples per topic or RAG over a maintained
+reference list.
+
+**Labels.** The "I'd have said" control writes
+{source, text, previous_messages, brief_version, jev_class, my_class, timestamp}
+to `data/labels.jsonl` — ready to serve as the first eval set, and the natural
+source of `examples` for structured topic rubrics.
+
+**Modes.** choice (exclusive, confidence) vs multi-label (independent noul scores,
+same cost, one call) behave as documented; multi-label gives absolute per-topic
+signals (hostile_body 0.95 with everything else < 0.1) where choice split mass
+between overlapping classes.
